@@ -1,0 +1,93 @@
+mission:
+  name: "County AI Policies and Governance"
+
+collection:
+  topic: "county artificial intelligence policies and governance in the United States"
+  depth: "deep"
+  max_documents: 250
+  max_per_source: 50
+  languages:
+    collect: ["en", "es"]
+    translate_to: "en"
+  sources:
+    enabled: [government, web, pdf, academic, news, youtube]
+    priority:
+      government: 10
+      pdf: 9
+      academic: 7
+      web: 7
+      news: 5
+      youtube: 4
+
+authenticated_sources:
+  enabled: true
+  platforms:
+    - name: university_library
+      fallback_for_paywalls: true
+    - name: ieee
+      max_results: 20
+
+llm_sources:
+  enabled: false
+  models:
+    - provider: ollama
+      model_id: "llama3.1:8b"
+      enabled: true
+      base_url: "http://localhost:11434"
+      max_tokens: 1500
+      temperature: 0.3
+    - provider: ollama
+      model_id: mistral
+      enabled: true
+      base_url: "http://localhost:11434"
+      max_tokens: 1500
+      temperature: 0.3
+    - provider: openrouter
+      model_id: "google/gemini-1.5-flash"
+      enabled: false
+      max_tokens: 1500
+      temperature: 0.3
+  query_settings:
+    parallel: true
+    delay_between_queries: 2
+    skip_duplicate_queries: true
+  comparison:
+    enabled: true
+    min_models_for_comparison: 2
+    highlight_divergence: true
+    confidence_scoring: true
+
+cleaning:
+  instructions: |
+    Extract county-level and local-government AI policy details with an emphasis on jurisdiction,
+    adoption status, responsible departments, governance controls, procurement rules, public transparency,
+    risk management, and implementation timelines. Normalize all outputs into clear English and flag
+    weak or incomplete extractions.
+  output_schema:
+    is_relevant: bool
+    relevance_score: float
+    document_info:
+      title: string
+      jurisdiction_state: string
+      jurisdiction_locality: string
+      document_type: string
+      source_organization: string
+      publication_date: string
+      adoption_status: string
+    governance_details:
+      responsible_departments: list
+      policy_scope: list
+      oversight_mechanisms: list
+      risk_controls: list
+      procurement_requirements: list
+      transparency_requirements: list
+      public_engagement_notes: list
+    summary: string
+    key_topics: list
+    quality_issues: list
+
+output:
+  formats: [json, csv, markdown]
+  sort_by: "relevance_score"
+  sort_order: "desc"
+  organize_by: "document_info.jurisdiction_state"

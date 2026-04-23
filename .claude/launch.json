@@ -1,0 +1,31 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ARIA API",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "aria.cli", "--serve-api"],
+      "port": 8765
+    },
+    {
+      "name": "ARIA Studio",
+      "runtimeExecutable": "flutter",
+      "runtimeArgs": ["run", "-d", "web-server", "--web-port", "8767", "--wasm", "--release", "--dart-define=API_BASE_URL=http://127.0.0.1:8765"],
+      "cwd": "aria_studio",
+      "port": 8767
+    },
+    {
+      "name": "ARIA Studio Web",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8768", "--directory", "aria/studio"],
+      "port": 8768
+    },
+    {
+      "name": "aria-report",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "aria-report",
+      "port": 5173
+    }
+  ]
+}

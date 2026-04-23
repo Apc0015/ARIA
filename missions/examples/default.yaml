@@ -1,0 +1,117 @@
+mission:
+  name: "General Research Mission"
+
+collection:
+  topic: "Replace with your research topic"
+  depth: "medium"
+  max_documents: 150
+  max_per_source: 30
+  languages:
+    collect: ["en"]
+    translate_to: "en"
+  sources:
+    # All available source keys:
+    #   Free (no credentials):
+    #     web, pdf, academic, youtube, reddit, hackernews, wikipedia,
+    #     stackoverflow, medium, devto, substack, rss,
+    #     news, government, github, multilingual
+    #   Auth-gated (silently skipped if credentials missing):
+    #     twitter, linkedin, slack, notion, podcast, vimeo, zotero,
+    #     academic_platforms
+    enabled: [web, pdf, academic, youtube, news, hackernews, wikipedia]
+    priority:
+      academic:           10
+      academic_platforms: 10
+      pdf:                8
+      web:                7
+      news:               7
+      government:         6
+      github:             6
+      youtube:            5
+      reddit:             5
+      hackernews:         5
+      wikipedia:          4
+      stackoverflow:      4
+      multilingual:       3
+      medium:             3
+      devto:              3
+      substack:           2
+      rss:                2
+      twitter:            5
+      linkedin:           4
+      slack:              3
+      notion:             3
+      podcast:            3
+      vimeo:              2
+      zotero:             8
+
+authenticated_sources:
+  enabled: false
+  platforms: []
+
+llm_sources:
+  enabled: false
+  models:
+    - provider: ollama
+      model_id: "llama3.1:8b"
+      enabled: true
+      base_url: "http://localhost:11434"
+      max_tokens: 1500
+      temperature: 0.3
+      notes: "Local baseline ensemble model"
+    - provider: openrouter
+      model_id: "openai/gpt-4o-mini"
+      enabled: false
+      max_tokens: 1500
+      temperature: 0.3
+      notes: "Cloud ensemble source via OpenRouter (set OPENROUTER_API_KEY)"
+    - provider: anthropic
+      model_id: "claude-3-5-haiku-latest"
+      enabled: false
+      max_tokens: 1500
+      temperature: 0.3
+      notes: "Anthropic Claude (set ANTHROPIC_API_KEY)"
+    - provider: openai
+      model_id: "gpt-4o-mini"
+      enabled: false
+      max_tokens: 1500
+      temperature: 0.3
+      notes: "OpenAI direct (set OPENAI_API_KEY)"
+  query_settings:
+    parallel: true
+    delay_between_queries: 2
+    skip_duplicate_queries: true
+  comparison:
+    enabled: true
+    min_models_for_comparison: 2
+    highlight_divergence: true
+    confidence_scoring: true
+
+cleaning:
+  instructions: |
+    Extract structured, source-attributed research findings that help a general researcher
+    understand the topic quickly. Focus on actionable insights, recurring themes, institutions,
+    locations, dates, and notable risks or opportunities.
+  output_schema:
+    is_relevant: bool
+    relevance_score: float
+    title: string
+    summary: string
+    language_original: string
+    text_english: string
+    key_topics: list
+    entities:
+      organizations: list
+      locations: list
+      people: list
+      policies_mentioned: list
+    document_type: string
+    date_published: string
+    source_organization: string
+    quality_issues: list
+
+output:
+  formats: [json, csv, markdown]
+  sort_by: "relevance_score"
+  sort_order: "desc"
+  organize_by: ""
