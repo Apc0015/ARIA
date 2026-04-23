@@ -54,6 +54,7 @@ class _RunDetailPageState extends State<RunDetailPage>
   Widget build(BuildContext context) {
     final c = context.watch<AriaController>();
     final run = c.runDetailResult;
+    final isMobile = AriaTheme.isMobile(context);
 
     return Scaffold(
       backgroundColor: AriaTheme.bg0,
@@ -68,44 +69,85 @@ class _RunDetailPageState extends State<RunDetailPage>
             Column(children: [
               _RunDetailTopBar(run: run, onBack: () => Navigator.of(context).pop()),
               Expanded(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Left panel — stats
-                    SizedBox(
-                      width: 220,
-                      child: _RunStatsPanel(run: run),
-                    ),
-                    Container(width: 1, color: AriaTheme.borderSubtle),
-                    // Main content
-                    Expanded(
-                      child: Column(children: [
-                        _RunDetailTabBar(
-                          current: _tab,
-                          docCount: c.runDetailDocuments.length,
-                          kgNodeCount: c.runDetailKg['node_count'] as int? ?? 0,
-                          gapCount: c.runDetailGaps.length,
-                          imageCount: c.runDetailImages.length,
-                          onChange: (i) => setState(() => _tab = i),
-                        ),
-                        Expanded(
-                          child: _tab == 0
-                              ? _DocumentsTab(run: run, onDocTap: _openDoc)
-                              : _tab == 1
-                                  ? _KgTab(kg: c.runDetailKg)
-                                  : _tab == 2
-                                      ? _GapsTab(gaps: c.runDetailGaps)
-                                      : _ImagesTab(images: c.runDetailImages),
-                        ),
-                      ]),
-                    ),
-                  ],
-                ),
+                child: isMobile
+                    ? _buildMobileLayout(context)
+                    : _buildDesktopLayout(context),
               ),
             ]),
           ]),
         ),
       ),
+    );
+  }
+
+  Widget _buildDesktopLayout(BuildContext context) {
+    final c = context.watch<AriaController>();
+    final run = c.runDetailResult;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Left panel — stats
+        SizedBox(
+          width: 220,
+          child: _RunStatsPanel(run: run),
+        ),
+        Container(width: 1, color: AriaTheme.borderSubtle),
+        // Main content
+        Expanded(child: _buildMainContent(context)),
+      ],
+    );
+  }
+
+  Widget _buildMobileLayout(BuildContext context) {
+    return Stack(
+      children: [
+        _buildMainContent(context),
+        Positioned(
+          bottom: 16,
+          right: 16,
+          child: FloatingActionButton.small(
+            backgroundColor: AriaTheme.brandIndigo,
+            onPressed: () => _showStatsSheet(context),
+            child: const Icon(Icons.analytics_outlined, color: Colors.white, size: 18),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMainContent(BuildContext context) {
+    final c = context.watch<AriaController>();
+    final run = c.runDetailResult;
+    return Column(children: [
+      _RunDetailTabBar(
+        current: _tab,
+        docCount: c.runDetailDocuments.length,
+        kgNodeCount: c.runDetailKg['node_count'] as int? ?? 0,
+        gapCount: c.runDetailGaps.length,
+        imageCount: c.runDetailImages.length,
+        onChange: (i) => setState(() => _tab = i),
+      ),
+      Expanded(
+        child: _tab == 0
+            ? _DocumentsTab(run: run, onDocTap: _openDoc)
+            : _tab == 1
+                ? _KgTab(kg: c.runDetailKg)
+                : _tab == 2
+                    ? _GapsTab(gaps: c.runDetailGaps)
+                    : _ImagesTab(images: c.runDetailImages),
+      ),
+    ]);
+  }
+
+  void _showStatsSheet(BuildContext context) {
+    final c = context.read<AriaController>();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AriaTheme.bg1,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => _RunStatsPanel(run: c.runDetailResult),
     );
   }
 
@@ -868,8 +910,8 @@ class _ImagesTab extends StatelessWidget {
 
     return GridView.builder(
       padding: const EdgeInsets.all(16),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 200,
+      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: AriaTheme.isMobile(context) ? 160 : AriaTheme.isTablet(context) ? 200 : 280,
         mainAxisSpacing: 8,
         crossAxisSpacing: 8,
         childAspectRatio: 1.3,

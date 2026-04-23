@@ -1,6 +1,8 @@
 // ARIA Studio — History Page
 // Shows past research runs with status, topic, document count
 
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -17,6 +19,8 @@ class HistoryPage extends StatefulWidget {
 
 class _HistoryPageState extends State<HistoryPage> {
   bool _loading = false;
+  int _displayCount = 20;
+  static const _pageSize = 20;
 
   @override
   void initState() {
@@ -75,18 +79,30 @@ class _HistoryPageState extends State<HistoryPage> {
                         Text('Start a research run from the dashboard',
                             style: AriaTheme.inter(size: 13, color: AriaTheme.textSubtle)),
                       ]))
-                    : ListView.separated(
+                    : ListView.builder(
                         padding: const EdgeInsets.all(20),
-                        itemCount: c.runHistory.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemCount: min(_displayCount, c.runHistory.length) +
+                            (c.runHistory.length > _displayCount ? 1 : 0),
                         itemBuilder: (ctx, i) {
+                          if (i >= min(_displayCount, c.runHistory.length)) {
+                            return Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: AriaGhostButton(
+                                label: 'Load ${min(_pageSize, c.runHistory.length - _displayCount)} more runs',
+                                onPressed: () => setState(() => _displayCount += _pageSize),
+                              ),
+                            );
+                          }
                           final run = c.runHistory[c.runHistory.length - 1 - i];
-                          return _RunHistoryCard(run: run, onTap: () {
-                            final id = run['run_id'] as String? ?? run['id'] as String? ?? '';
-                            if (id.isNotEmpty) {
-                              Navigator.of(context).pushNamed('/reports', arguments: id);
-                            }
-                          });
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: _RunHistoryCard(run: run, onTap: () {
+                              final id = run['run_id'] as String? ?? run['id'] as String? ?? '';
+                              if (id.isNotEmpty) {
+                                Navigator.of(context).pushNamed('/reports', arguments: id);
+                              }
+                            }),
+                          );
                         },
                       ),
           ),
