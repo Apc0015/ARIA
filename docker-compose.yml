@@ -1,0 +1,36 @@
+services:
+  aria-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    image: aria-api:latest
+    container_name: aria-api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - ARIA_ALLOWED_ORIGINS=http://localhost,http://127.0.0.1
+    volumes:
+      - ./data:/app/data
+      - ./credentials:/app/credentials
+      - ./missions:/app/missions
+    ports:
+      - "8765:8765"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8765/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  aria-web:
+    image: nginx:alpine
+    container_name: aria-web
+    restart: unless-stopped
+    depends_on:
+      aria-api:
+        condition: service_healthy
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./aria_studio/build/web:/usr/share/nginx/html:ro

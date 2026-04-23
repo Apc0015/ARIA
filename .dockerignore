@@ -1,0 +1,17 @@
+__pycache__
+*.pyc
+*.pyo
+.venv
+venv
+.git
+.gitignore
+aria_studio/
+aria-report/
+tests/
+data/
+logs/
+*.log
+credentials/
+.env
+*.md
+docs/
