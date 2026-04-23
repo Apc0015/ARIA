@@ -54,6 +54,7 @@ class _SettingsPageState extends State<SettingsPage>
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = AriaTheme.isMobile(context);
     return Scaffold(
       backgroundColor: AriaTheme.bg0,
       body: FadeTransition(
@@ -72,41 +73,137 @@ class _SettingsPageState extends State<SettingsPage>
             Column(children: [
               _SettingsTopBar3d(),
               Expanded(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Vertical 3D tab rail
-                    _TabRail3d(
-                      current: _section,
-                      tabs: _tabs,
-                      onSelect: (i) => setState(() => _section = i),
-                    ),
-                    // Scrollable content area
-                    Expanded(
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 240),
-                        switchInCurve:  Curves.easeOut,
-                        switchOutCurve: Curves.easeIn,
-                        transitionBuilder: (child, anim) => FadeTransition(
-                          opacity: anim,
-                          child: SlideTransition(
-                            position: Tween<Offset>(
-                              begin: const Offset(0.015, 0), end: Offset.zero,
-                            ).animate(anim),
-                            child: child,
-                          ),
-                        ),
-                        child: KeyedSubtree(
-                          key: ValueKey(_section),
-                          child: _sectionWidget(_section),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                child: isMobile
+                    ? _buildMobileLayout(context)
+                    : _buildDesktopLayout(context),
               ),
             ]),
           ]),
+        ),
+      ),
+    );
+  }
+
+  /// Desktop layout — vertical 3D tab rail on the left, content on the right.
+  Widget _buildDesktopLayout(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Vertical 3D tab rail
+        _TabRail3d(
+          current: _section,
+          tabs: _tabs,
+          onSelect: (i) => setState(() => _section = i),
+        ),
+        // Scrollable content area
+        Expanded(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 240),
+            switchInCurve:  Curves.easeOut,
+            switchOutCurve: Curves.easeIn,
+            transitionBuilder: (child, anim) => FadeTransition(
+              opacity: anim,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0.015, 0), end: Offset.zero,
+                ).animate(anim),
+                child: child,
+              ),
+            ),
+            child: KeyedSubtree(
+              key: ValueKey(_section),
+              child: _sectionWidget(_section),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Mobile layout — horizontal scrollable tab bar at the top, content below.
+  Widget _buildMobileLayout(BuildContext context) {
+    return Column(
+      children: [
+        _buildMobileTabBar(context),
+        const Divider(height: 1, color: AriaTheme.borderSubtle),
+        Expanded(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 240),
+            switchInCurve:  Curves.easeOut,
+            switchOutCurve: Curves.easeIn,
+            transitionBuilder: (child, anim) => FadeTransition(
+              opacity: anim,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, 0.015), end: Offset.zero,
+                ).animate(anim),
+                child: child,
+              ),
+            ),
+            child: KeyedSubtree(
+              key: ValueKey(_section),
+              child: _sectionWidget(_section),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Horizontal pill-tab bar for mobile.
+  Widget _buildMobileTabBar(BuildContext context) {
+    return Container(
+      height: 44,
+      color: AriaTheme.bg1,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        child: Row(
+          children: [
+            for (int i = 0; i < _tabs.length; i++)
+              GestureDetector(
+                onTap: () => setState(() => _section = i),
+                child: AnimatedContainer(
+                  duration: AriaTheme.durFast,
+                  margin: const EdgeInsets.only(right: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: _section == i
+                        ? AriaTheme.brandIndigo
+                        : AriaTheme.glass1,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: _section == i
+                          ? AriaTheme.brandIndigo
+                          : AriaTheme.borderStandard,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _tabs[i].$1,
+                        size: 13,
+                        color: _section == i
+                            ? AriaTheme.textPrimary
+                            : AriaTheme.textMuted,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        _tabs[i].$2,
+                        style: AriaTheme.inter(
+                          size: 12,
+                          weight: FontWeight.w500,
+                          color: _section == i
+                              ? AriaTheme.textPrimary
+                              : AriaTheme.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
