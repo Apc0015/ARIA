@@ -140,9 +140,15 @@ class RunManager:
         }
 
     async def start_run(self, payload: dict[str, Any]) -> RunState:
-        # Check if we're at capacity BEFORE accepting the run
-        if self._run_semaphore._value == 0:
-            raise ValueError(f"Server at capacity. Maximum {int(os.environ.get('ARIA_MAX_CONCURRENT_RUNS', '20'))} concurrent runs allowed.")
+        # Advisory capacity check — not atomic, but provides fast UX feedback.
+        # True enforcement is the semaphore inside _execute_run.
+        active_runs = sum(1 for s in self.runs.values() if s.status == "running")
+        max_runs = int(os.environ.get("ARIA_MAX_CONCURRENT_RUNS", "20"))
+        if active_runs >= max_runs:
+            raise ValueError(
+                f"Server at capacity ({active_runs}/{max_runs} runs active). "
+                f"Try again when a run finishes."
+            )
 
         run_id = uuid4().hex[:12]
         output_dir = self.base_settings.runs_dir / run_id

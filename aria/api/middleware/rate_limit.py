@@ -1,10 +1,10 @@
 """Per-key rate limiting for ARIA Studio API."""
 from __future__ import annotations
 
+import asyncio as _asyncio
 import os
 import time
 from collections import defaultdict, deque
-from threading import Lock
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -16,7 +16,14 @@ _REQ_LIMIT = int(os.environ.get("ARIA_RATE_LIMIT_REQS_PER_MIN", "300"))  # total
 
 _run_windows: dict[str, deque] = defaultdict(deque)   # key → timestamps of run starts
 _req_windows: dict[str, deque] = defaultdict(deque)   # key → timestamps of all requests
-_lock = Lock()
+_lock: _asyncio.Lock | None = None
+
+
+def _get_lock() -> _asyncio.Lock:
+    global _lock
+    if _lock is None:
+        _lock = _asyncio.Lock()
+    return _lock
 
 # Paths exempt from request rate limiting (health checks, polling is fine)
 _RATE_EXEMPT = {"/api/health", "/"}
@@ -47,7 +54,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         )
 
         now = time.monotonic()
-        with _lock:
+        async with _get_lock():
             # 1. General request rate: 300 req/min per key
             req_w = _req_windows[api_key]
             _sliding_count(req_w, 60)
