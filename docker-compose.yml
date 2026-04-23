@@ -9,6 +9,9 @@ services:
     env_file: .env
     environment:
       - ARIA_ALLOWED_ORIGINS=http://localhost,http://127.0.0.1
+      - ARIA_MAX_CONCURRENT_RUNS=20
+      - ARIA_RATE_LIMIT_RUNS_PER_HOUR=30
+      - ARIA_RATE_LIMIT_REQS_PER_MIN=300
     volumes:
       - ./data:/app/data
       - ./credentials:/app/credentials

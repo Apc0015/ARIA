@@ -21,6 +21,8 @@ from aria.engine.ensemble.providers import build_provider_catalog, default_llm_s
 
 _logger = logging.getLogger("aria")
 
+_MAX_CONCURRENT_RUNS = int(os.environ.get("ARIA_MAX_CONCURRENT_RUNS", "20"))
+
 # Patterns that indicate a secret leaked into an exception message.
 _SECRET_PATTERNS = (
     re.compile(r"sk-[A-Za-z0-9_-]{20,}"),      # OpenAI / Anthropic style
@@ -74,6 +76,12 @@ class RunManager:
         self._lock = asyncio.Lock()
         self._brain_config: dict | None = None
         self._tasks: set[asyncio.Task] = set()
+        # Limit simultaneous heavy research tasks
+        self._run_semaphore = asyncio.Semaphore(
+            int(os.environ.get("ARIA_MAX_CONCURRENT_RUNS", "20"))
+        )
+        # Serialize env-var mutations (auth tokens are set globally per-run)
+        self._env_lock = asyncio.Lock()
 
     def list_templates(self) -> list[dict[str, Any]]:
         templates: list[dict[str, Any]] = []
@@ -132,6 +140,10 @@ class RunManager:
         }
 
     async def start_run(self, payload: dict[str, Any]) -> RunState:
+        # Check if we're at capacity BEFORE accepting the run
+        if self._run_semaphore._value == 0:
+            raise ValueError(f"Server at capacity. Maximum {int(os.environ.get('ARIA_MAX_CONCURRENT_RUNS', '20'))} concurrent runs allowed.")
+
         run_id = uuid4().hex[:12]
         output_dir = self.base_settings.runs_dir / run_id
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -148,73 +160,80 @@ class RunManager:
         return state
 
     async def _execute_run(self, state: RunState, payload: dict[str, Any]) -> None:
-        _TOKEN_ENV_MAP = {
-            "twitter_bearer_token": "TWITTER_BEARER_TOKEN",
-            "linkedin_email":       "LINKEDIN_EMAIL",
-            "linkedin_password":    "LINKEDIN_PASSWORD",
-            "notion_token":         "NOTION_TOKEN",
-            "slack_token":          "SLACK_TOKEN",
-            "vimeo_token":          "VIMEO_ACCESS_TOKEN",
-            "github_token":         "GITHUB_TOKEN",
-            "news_api_key":         "NEWS_API_KEY",
-            "gnews_api_key":        "GNEWS_API_KEY",
-        }
-        auth_tokens = payload.get("auth_tokens", {})
-        # Snapshot prior env so we can restore after the run (scope tokens to this run).
-        prior_env: dict[str, str | None] = {}
-        for payload_key, env_key in _TOKEN_ENV_MAP.items():
-            val = auth_tokens.get(payload_key, "")
-            if val:
-                prior_env[env_key] = os.environ.get(env_key)
-                os.environ[env_key] = val
+        async with self._run_semaphore:  # acquire slot — released when run finishes
+            _TOKEN_ENV_MAP = {
+                "twitter_bearer_token": "TWITTER_BEARER_TOKEN",
+                "linkedin_email":       "LINKEDIN_EMAIL",
+                "linkedin_password":    "LINKEDIN_PASSWORD",
+                "notion_token":         "NOTION_TOKEN",
+                "slack_token":          "SLACK_TOKEN",
+                "vimeo_token":          "VIMEO_ACCESS_TOKEN",
+                "github_token":         "GITHUB_TOKEN",
+                "news_api_key":         "NEWS_API_KEY",
+                "gnews_api_key":        "GNEWS_API_KEY",
+            }
+            auth_tokens = payload.get("auth_tokens", {})
+            # Snapshot prior env so we can restore after the run (scope tokens to this run).
+            prior_env: dict[str, str | None] = {}
 
-        # Zotero: api_key + library_id + library_type from top-level zotero_config
-        zotero_config = payload.get("zotero_config") or {}
-        for cfg_key, env_key in (
-            ("api_key",      "ZOTERO_API_KEY"),
-            ("library_id",   "ZOTERO_LIBRARY_ID"),
-            ("library_type", "ZOTERO_LIBRARY_TYPE"),
-        ):
-            val = (zotero_config.get(cfg_key) or "").strip() if isinstance(zotero_config.get(cfg_key), str) else zotero_config.get(cfg_key)
-            if val:
-                prior_env[env_key] = os.environ.get(env_key)
-                os.environ[env_key] = str(val)
+            # Acquire env lock to safely set auth env vars
+            async with self._env_lock:
+                for payload_key, env_key in _TOKEN_ENV_MAP.items():
+                    val = auth_tokens.get(payload_key, "")
+                    if val:
+                        prior_env[env_key] = os.environ.get(env_key)
+                        os.environ[env_key] = val
 
-        try:
-            flags = payload.get("flags", {})
-            provider = payload.get("provider", {})
-            settings = load_config(output_dir=Path(state.output_dir))
-            if provider:
-                settings = settings.with_llm_override(
-                    provider=provider.get("provider"),
-                    model=provider.get("model"),
-                    api_key=provider.get("api_key"),
-                    base_url=provider.get("base_url"),
+                # Zotero: api_key + library_id + library_type from top-level zotero_config
+                zotero_config = payload.get("zotero_config") or {}
+                for cfg_key, env_key in (
+                    ("api_key",      "ZOTERO_API_KEY"),
+                    ("library_id",   "ZOTERO_LIBRARY_ID"),
+                    ("library_type", "ZOTERO_LIBRARY_TYPE"),
+                ):
+                    val = (zotero_config.get(cfg_key) or "").strip() if isinstance(zotero_config.get(cfg_key), str) else zotero_config.get(cfg_key)
+                    if val:
+                        prior_env[env_key] = os.environ.get(env_key)
+                        os.environ[env_key] = str(val)
+
+            try:
+                # orchestrator runs WITHOUT holding env_lock (env vars are now set)
+                flags = payload.get("flags", {})
+                provider = payload.get("provider", {})
+                settings = load_config(output_dir=Path(state.output_dir))
+                if provider:
+                    settings = settings.with_llm_override(
+                        provider=provider.get("provider"),
+                        model=provider.get("model"),
+                        api_key=provider.get("api_key"),
+                        base_url=provider.get("base_url"),
+                    )
+                logger = configure_logging(verbose=True)
+                orchestrator = MasterOrchestrator(settings, logger, event_callback=lambda event: self.record_event(state.run_id, event))
+                await self._update_state(state.run_id, status="running", stage="starting", message="Run started")
+                result = await orchestrator.run(
+                    state.mission or {},
+                    collect_only=bool(flags.get("collect_only", False)),
+                    clean_only=bool(flags.get("clean_only", False)),
+                    validate_credentials=bool(flags.get("validate_credentials", False)),
+                    authenticated_only=bool(flags.get("authenticated_only", False)),
+                    public_only=bool(flags.get("public_only", False)),
+                    resume=bool(flags.get("resume", False)),
+                    credentials_path=str(self.base_settings.credentials_file),
                 )
-            logger = configure_logging(verbose=True)
-            orchestrator = MasterOrchestrator(settings, logger, event_callback=lambda event: self.record_event(state.run_id, event))
-            await self._update_state(state.run_id, status="running", stage="starting", message="Run started")
-            result = await orchestrator.run(
-                state.mission or {},
-                collect_only=bool(flags.get("collect_only", False)),
-                clean_only=bool(flags.get("clean_only", False)),
-                validate_credentials=bool(flags.get("validate_credentials", False)),
-                authenticated_only=bool(flags.get("authenticated_only", False)),
-                public_only=bool(flags.get("public_only", False)),
-                resume=bool(flags.get("resume", False)),
-                credentials_path=str(self.base_settings.credentials_file),
-            )
-            await self._complete_run(state.run_id, result)
-        except Exception as exc:
-            _logger.exception("Run %s failed", state.run_id)
-            safe_error = f"{type(exc).__name__}: {_scrub_secrets(str(exc))[:400]}"
-            await self._update_state(state.run_id, status="failed", stage="failed", message="Run failed", error=safe_error)
-        finally:
-            for env_key, prior_val in prior_env.items():
-                if prior_val is None:
-                    os.environ.pop(env_key, None)
-                else:
-                    os.environ[env_key] = prior_val
+                await self._complete_run(state.run_id, result)
+            except Exception as exc:
+                _logger.exception("Run %s failed", state.run_id)
+                safe_error = f"{type(exc).__name__}: {_scrub_secrets(str(exc))[:400]}"
+                await self._update_state(state.run_id, status="failed", stage="failed", message="Run failed", error=safe_error)
+            finally:
+                # Re-acquire env lock to safely restore env vars
+                async with self._env_lock:
+                    for env_key, prior_val in prior_env.items():
+                        if prior_val is None:
+                            os.environ.pop(env_key, None)
+                        else:
+                            os.environ[env_key] = prior_val
 
     async def record_event(self, run_id: str, event: dict[str, Any]) -> None:
         async with self._lock:

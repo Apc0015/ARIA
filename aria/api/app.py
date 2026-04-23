@@ -62,6 +62,9 @@ app.add_middleware(
 from aria.api.middleware.auth import ApiKeyMiddleware
 app.add_middleware(ApiKeyMiddleware)
 
+from aria.api.middleware.rate_limit import RateLimitMiddleware
+app.add_middleware(RateLimitMiddleware)
+
 # ---------------------------------------------------------------------------
 # Real backend – register RunManager and all routers
 # ---------------------------------------------------------------------------
