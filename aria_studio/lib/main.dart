@@ -5,11 +5,14 @@ import 'package:provider/provider.dart';
 
 import 'state/aria_controller.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
   GoogleFonts.config.allowRuntimeFetching = true;
+  final controller = AriaController();
+  await controller.loadPersistedSettings();
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => AriaController()..bootstrap(),
+    ChangeNotifierProvider.value(
+      value: controller,
       child: const AriaStudioApp(),
     ),
   );

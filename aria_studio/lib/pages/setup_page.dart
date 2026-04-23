@@ -207,9 +207,16 @@ class _ConnectStep extends StatefulWidget {
 }
 
 class _ConnectStepState extends State<_ConnectStep> {
-  final _urlCtrl  = TextEditingController(text: 'http://127.0.0.1:8765');
+  late final TextEditingController _urlCtrl;
   bool  _loading  = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final savedUrl = context.read<AriaController>().apiBaseUrl;
+    _urlCtrl = TextEditingController(text: savedUrl);
+  }
 
   @override
   void dispose() {
@@ -221,7 +228,7 @@ class _ConnectStepState extends State<_ConnectStep> {
     final c = context.read<AriaController>();
     setState(() { _loading = true; _error = null; });
     try {
-      c.apiBaseUrl = _urlCtrl.text.trim();
+      await c.persistApiUrl(_urlCtrl.text.trim());
       await c.bootstrap();
       if (!mounted) return;
       if (c.isConnected) {

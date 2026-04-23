@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/api_client.dart';
 
@@ -90,6 +91,24 @@ class AriaController extends ChangeNotifier {
   bool isConnected = false;
   bool isBusy = false;
   String apiBaseUrl = 'http://127.0.0.1:8765';
+  static const _kApiUrl = 'aria_api_base_url';
+
+  /// Load persisted settings. Called once at startup.
+  Future<void> loadPersistedSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedUrl = prefs.getString(_kApiUrl);
+    if (savedUrl != null && savedUrl.isNotEmpty) {
+      apiBaseUrl = savedUrl;
+      _api.baseUrl = savedUrl;
+    }
+    notifyListeners();
+  }
+
+  Future<void> persistApiUrl(String url) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kApiUrl, url);
+    updateApiBaseUrl(url);
+  }
 
   // ── Search bar ──
   String topic = '';
