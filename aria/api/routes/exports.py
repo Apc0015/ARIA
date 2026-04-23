@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import re as _re
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 
 from aria.api.run_manager import RunManager
+
+_SAFE_FILENAME = _re.compile(r'^[\w\-. ]+$')  # alphanum, dash, dot, space, underscore
 
 router = APIRouter()
 
@@ -80,17 +83,26 @@ async def download_file(
     filename: str,
     run_manager: RunManager = Depends(get_run_manager),
 ):
-    """Serve an export file for download."""
-    state = _require_run(run_id, run_manager)
-    output_dir = Path(state.output_dir)
+    """Serve an export file for download (path-traversal safe)."""
+    # 1. Validate filename — reject anything with path separators or unusual chars
+    if not _SAFE_FILENAME.match(filename):
+        raise HTTPException(status_code=400, detail="Invalid filename")
 
-    # Search for the file in the output dir and its subdirectories
+    state = _require_run(run_id, run_manager)
+    output_dir = Path(state.output_dir).resolve()
+
+    # 2. Search for file then verify it's actually inside output_dir
     candidates = list(output_dir.rglob(filename))
     if not candidates:
         raise HTTPException(status_code=404, detail=f"File '{filename}' not found for run '{run_id}'")
 
-    file_path = candidates[0]
+    file_path = candidates[0].resolve()
+
+    # 3. Boundary check — resolved path must start with output_dir
+    if not str(file_path).startswith(str(output_dir)):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     if not file_path.is_file():
-        raise HTTPException(status_code=404, detail=f"File '{filename}' is not a regular file")
+        raise HTTPException(status_code=404, detail=f"'{filename}' is not a regular file")
 
     return FileResponse(path=str(file_path), filename=filename)
