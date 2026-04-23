@@ -167,40 +167,59 @@ class AriaPill extends StatelessWidget {
 // Ghost button — rgba(0.02) bg, borderStandard, 6px radius
 // ─────────────────────────────────────────────────────────────
 
-class AriaGhostButton extends StatelessWidget {
+class AriaGhostButton extends StatefulWidget {
   const AriaGhostButton({super.key, required this.label, this.onPressed, this.icon});
   final String    label;
   final VoidCallback? onPressed;
   final IconData? icon;
 
   @override
+  State<AriaGhostButton> createState() => _AriaGhostButtonState();
+}
+
+class _AriaGhostButtonState extends State<AriaGhostButton> {
+  bool _pressed = false;
+
+  @override
   Widget build(BuildContext context) {
-    final enabled = onPressed != null;
+    final enabled = widget.onPressed != null;
     return GestureDetector(
-      onTap: onPressed,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-        decoration: BoxDecoration(
-          color: AriaTheme.cardBg,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: AriaTheme.borderStandard),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (icon != null) ...[
-              Icon(icon, size: 13, color: enabled ? AriaTheme.textSecondary : AriaTheme.textSubtle),
-              const SizedBox(width: 6),
-            ],
-            Text(
-              label,
-              style: AriaTheme.inter(
-                size: 12,
-                weight: FontWeight.w500,
-                color: enabled ? AriaTheme.textSecondary : AriaTheme.textSubtle,
-              ),
+      onTap: enabled ? widget.onPressed : null,
+      onTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
+      onTapUp: enabled ? (_) => setState(() => _pressed = false) : null,
+      onTapCancel: enabled ? () => setState(() => _pressed = false) : null,
+      child: AnimatedScale(
+        scale: _pressed ? 0.95 : 1.0,
+        duration: const Duration(milliseconds: 80),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 80),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+          decoration: BoxDecoration(
+            color: _pressed
+                ? AriaTheme.glass2
+                : AriaTheme.glass1,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: _pressed ? AriaTheme.borderStandard : AriaTheme.borderSubtle,
             ),
-          ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (widget.icon != null) ...[
+                Icon(widget.icon, size: 13, color: enabled ? AriaTheme.textMuted : AriaTheme.textSubtle),
+                const SizedBox(width: 6),
+              ],
+              Text(
+                widget.label,
+                style: AriaTheme.inter(
+                  size: 13,
+                  weight: FontWeight.w500,
+                  color: enabled ? AriaTheme.textSecondary : AriaTheme.textSubtle,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

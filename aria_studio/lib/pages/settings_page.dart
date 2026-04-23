@@ -2,6 +2,8 @@
 // "Deep Space Research Terminal" 3D design aesthetic
 // Glass panels · 3D tilt cards · star field · glowing headers · 3D tab rail
 
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -1172,6 +1174,7 @@ class _AdvancedTabState extends State<_AdvancedTab> {
   final _schemaCtrl  = TextEditingController();
   final _chunkSzCtrl = TextEditingController();
   final _chunkOvCtrl = TextEditingController();
+  bool _jsonValid = true;
 
   @override
   void initState() {
@@ -1254,15 +1257,33 @@ class _AdvancedTabState extends State<_AdvancedTab> {
                   child: TextField(
                     controller: _schemaCtrl,
                     maxLines: 10,
-                    onChanged: c.updateOutputSchemaJson,
+                    onChanged: (v) {
+                      c.updateOutputSchemaJson(v);
+                      bool valid = true;
+                      if (v.trim().isNotEmpty) {
+                        try { jsonDecode(v); } catch (_) { valid = false; }
+                      }
+                      if (valid != _jsonValid) setState(() => _jsonValid = valid);
+                    },
                     style: GoogleFonts.sourceCodePro(
                       fontSize: 12, color: AriaTheme.textSecondary, height: 1.5),
                     decoration: InputDecoration(
                       border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
+                      errorText: _jsonValid ? null : 'Invalid JSON',
+                      errorStyle: AriaTheme.inter(size: 11, color: AriaTheme.statusRed),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(6),
+                        borderSide: BorderSide(
+                          color: _jsonValid
+                              ? AriaTheme.borderStandard
+                              : AriaTheme.statusRed.withAlpha(128),
+                        ),
+                      ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(6),
-                        borderSide: const BorderSide(color: AriaTheme.brandIndigo),
+                        borderSide: BorderSide(
+                          color: _jsonValid ? AriaTheme.brandIndigo : AriaTheme.statusRed,
+                        ),
                       ),
                       contentPadding: const EdgeInsets.all(12),
                       isDense: true,

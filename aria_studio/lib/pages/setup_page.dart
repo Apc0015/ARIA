@@ -601,16 +601,20 @@ class _ModelStepState extends State<_ModelStep> {
           ),
           const SizedBox(height: 10),
           Row(children: [
-            AriaGhostButton(
-              label: 'Detect provider',
-              icon: Icons.auto_awesome,
-              onPressed: _detecting ? null : _detect,
-            ),
+            _detecting
+              ? Row(mainAxisSize: MainAxisSize.min, children: [
+                  const SizedBox(width: 12, height: 12,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 1.5, color: AriaTheme.textMuted)),
+                  const SizedBox(width: 8),
+                  Text('Detecting...', style: AriaTheme.inter(size: 13, color: AriaTheme.textMuted)),
+                ])
+              : AriaGhostButton(
+                  label: 'Detect provider',
+                  icon: Icons.auto_awesome,
+                  onPressed: _detect,
+                ),
             const SizedBox(width: 10),
-            if (_detecting)
-              const SizedBox(width: 16, height: 16,
-                child: CircularProgressIndicator(
-                    strokeWidth: 1.5, color: AriaTheme.brandIndigo)),
             if (_detectedProvider != null)
               AriaPill(
                   label: _detectedProvider!, color: AriaTheme.statusEmerald),
