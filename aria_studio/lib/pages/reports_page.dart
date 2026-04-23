@@ -50,8 +50,9 @@ class _ReportsPageState extends State<ReportsPage>
 
   @override
   Widget build(BuildContext context) {
-    final c   = context.watch<AriaController>();
-    final run = c.runDetailResult;
+    final c       = context.watch<AriaController>();
+    final run     = c.runDetailResult;
+    final isMobile = AriaTheme.isMobile(context);
 
     return Scaffold(
       backgroundColor: AriaTheme.bg0,
@@ -66,28 +67,69 @@ class _ReportsPageState extends State<ReportsPage>
             Column(children: [
               _ReportsTopBar(run: run, onBack: () => Navigator.of(context).pop()),
               Expanded(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(width: 220, child: _RunInfoSidebar(run: run)),
-                    Container(width: 1, color: AriaTheme.borderSubtle),
-                    Expanded(
-                      child: Column(children: [
-                        _ReportsTabBar(
-                          current: _tab,
-                          docCount: c.runDetailDocuments.length,
-                          onChange: (i) => setState(() => _tab = i),
-                        ),
-                        Expanded(child: _buildTab(c, run)),
-                      ]),
-                    ),
-                  ],
-                ),
+                child: isMobile
+                    ? _buildMobileLayout(context)
+                    : _buildDesktopLayout(context),
               ),
             ]),
           ]),
         ),
       ),
+    );
+  }
+
+  Widget _buildDesktopLayout(BuildContext context) {
+    final c   = context.watch<AriaController>();
+    final run = c.runDetailResult;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(width: 220, child: _RunInfoSidebar(run: run)),
+        Container(width: 1, color: AriaTheme.borderSubtle),
+        Expanded(child: _buildMainContent(context)),
+      ],
+    );
+  }
+
+  Widget _buildMobileLayout(BuildContext context) {
+    return Stack(
+      children: [
+        _buildMainContent(context),
+        Positioned(
+          bottom: 16,
+          right: 16,
+          child: FloatingActionButton.small(
+            backgroundColor: AriaTheme.brandIndigo,
+            onPressed: () => _showSidebarSheet(context),
+            child: const Icon(Icons.analytics_outlined, color: Colors.white, size: 18),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMainContent(BuildContext context) {
+    final c   = context.watch<AriaController>();
+    final run = c.runDetailResult;
+    return Column(children: [
+      _ReportsTabBar(
+        current: _tab,
+        docCount: c.runDetailDocuments.length,
+        onChange: (i) => setState(() => _tab = i),
+      ),
+      Expanded(child: _buildTab(c, run)),
+    ]);
+  }
+
+  void _showSidebarSheet(BuildContext context) {
+    final c = context.read<AriaController>();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AriaTheme.bg1,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => _RunInfoSidebar(run: c.runDetailResult),
     );
   }
 
@@ -151,9 +193,8 @@ class _ReportsTopBar extends StatelessWidget {
           child: const Icon(Icons.arrow_back, size: 16, color: AriaTheme.textMuted),
         ),
         const SizedBox(width: 12),
-        Text('ARIA', style: AriaTheme.inter(
-          size: 18, weight: FontWeight.w700,
-          color: AriaTheme.brandIndigo, letterSpacing: 2.5)),
+        Text('ARIA', style: AriaTheme.display(
+          size: 17, letterSpacing: 2.0, color: AriaTheme.brandIndigo)),
         Text(' / Reports', style: AriaTheme.inter(size: 14, color: AriaTheme.textMuted)),
         const SizedBox(width: 12),
         Container(width: 1, height: 16, color: AriaTheme.borderSubtle),
@@ -248,7 +289,7 @@ class _SbRow extends StatelessWidget {
       Expanded(child: Text(label,
         style: AriaTheme.inter(size: 11, color: AriaTheme.textSubtle))),
       Text(value,
-        style: AriaTheme.inter(size: 12, weight: FontWeight.w500, color: AriaTheme.textPrimary)),
+        style: AriaTheme.mono(size: 12, weight: FontWeight.w500, color: AriaTheme.textPrimary)),
     ]),
   );
 }
@@ -441,7 +482,20 @@ class _DocumentsTabState extends State<_DocumentsTab> {
         ]),
       ),
       const Divider(height: 1, color: AriaTheme.borderSubtle),
-      Expanded(
+      if (docs.isEmpty)
+        Expanded(
+          child: Center(
+            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              const Icon(Icons.article_outlined, size: 32, color: AriaTheme.textSubtle),
+              const SizedBox(height: 12),
+              Text('No documents found', style: AriaTheme.inter(size: 14, color: AriaTheme.textMuted)),
+              const SizedBox(height: 4),
+              Text(_search.isNotEmpty ? 'Try a different search term' : 'Run may still be collecting',
+                style: AriaTheme.inter(size: 12, color: AriaTheme.textSubtle)),
+            ]),
+          ),
+        )
+      else Expanded(
         child: ListView.builder(
           padding: const EdgeInsets.all(16),
           itemCount: visible.length + (_shown < docs.length ? 1 : 0),
@@ -728,7 +782,7 @@ class _MetricCard extends StatelessWidget {
         ]),
         const SizedBox(height: 8),
         Text(value,
-          style: AriaTheme.inter(size: 26, weight: FontWeight.w500, color: color, height: 1.1)),
+          style: AriaTheme.mono(size: 22, weight: FontWeight.w600, color: AriaTheme.textPrimary, height: 1.1)),
         const SizedBox(height: 3),
         Text(label, style: AriaTheme.inter(size: 11, color: AriaTheme.textSubtle)),
       ]),
@@ -744,8 +798,8 @@ class _ScoreStat extends StatelessWidget {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Text(value, style: AriaTheme.inter(
-        size: 24, weight: FontWeight.w500, color: color, height: 1.1)),
+      Text(value, style: AriaTheme.mono(
+        size: 18, weight: FontWeight.w600, color: color, height: 1.1)),
       Text(label, style: AriaTheme.inter(size: 11, color: AriaTheme.textSubtle)),
     ],
   );
@@ -831,8 +885,7 @@ class _BarRow extends StatelessWidget {
       const SizedBox(width: 10),
       SizedBox(width: 36,
         child: Text('$count',
-          style: AriaTheme.inter(size: 11, weight: FontWeight.w500,
-            color: AriaTheme.textMuted),
+          style: AriaTheme.mono(size: 11),
           textAlign: TextAlign.right)),
     ]);
   }
@@ -842,9 +895,15 @@ class _BarRow extends StatelessWidget {
 // Tab 2: Exports
 // ─────────────────────────────────────────────────────────────
 
-class _ExportsTab extends StatelessWidget {
+class _ExportsTab extends StatefulWidget {
   const _ExportsTab({required this.runId});
   final String runId;
+  @override
+  State<_ExportsTab> createState() => _ExportsTabState();
+}
+
+class _ExportsTabState extends State<_ExportsTab> {
+  Map<String, bool> _downloading = {};
 
   static const _formats = [
     (
@@ -884,6 +943,12 @@ class _ExportsTab extends StatelessWidget {
     ),
   ];
 
+  Future<void> _startDownload(String formatKey) async {
+    setState(() => _downloading = {..._downloading, formatKey: true});
+    await context.read<AriaController>().downloadRunExport(widget.runId, formatKey);
+    if (mounted) setState(() => _downloading = {..._downloading, formatKey: false});
+  }
+
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
@@ -897,12 +962,12 @@ class _ExportsTab extends StatelessWidget {
         ..._formats.map((f) => Padding(
           padding: const EdgeInsets.only(bottom: 10),
           child: _ExportCard(
-            runId: runId,
-            formatKey: f.key,
-            label: f.label,
-            desc: f.desc,
+            format: f.label,
+            description: f.desc,
             icon: f.icon,
             color: f.color,
+            isDownloading: _downloading[f.key] == true,
+            onDownload: () => _startDownload(f.key),
           ),
         )),
       ]),
@@ -912,24 +977,24 @@ class _ExportsTab extends StatelessWidget {
 
 class _ExportCard extends StatefulWidget {
   const _ExportCard({
-    required this.runId,
-    required this.formatKey,
-    required this.label,
-    required this.desc,
+    required this.format,
+    required this.description,
     required this.icon,
     required this.color,
+    required this.onDownload,
+    this.isDownloading = false,
   });
-  final String   runId, formatKey, label, desc;
+  final String format, description;
   final IconData icon;
-  final Color    color;
+  final Color color;
+  final VoidCallback onDownload;
+  final bool isDownloading;
   @override
   State<_ExportCard> createState() => _ExportCardState();
 }
 
 class _ExportCardState extends State<_ExportCard> {
-  bool _hover    = false;
-  bool _loading  = false;
-  bool _done     = false;
+  bool _hover = false;
 
   @override
   Widget build(BuildContext context) {
@@ -938,58 +1003,44 @@ class _ExportCardState extends State<_ExportCard> {
       onEnter: (_) => setState(() => _hover = true),
       onExit:  (_) => setState(() => _hover = false),
       child: GestureDetector(
-        onTap: _loading ? null : _download,
+        onTap: widget.isDownloading ? null : widget.onDownload,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
+          duration: const Duration(milliseconds: 150),
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: _hover ? widget.color.withAlpha(10) : AriaTheme.cardBg,
-            borderRadius: BorderRadius.circular(8),
+            color: _hover ? AriaTheme.cardBgHover : AriaTheme.cardBg,
+            borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: _hover ? widget.color.withAlpha(50) : AriaTheme.borderSubtle),
+              color: _hover ? widget.color.withAlpha(80) : AriaTheme.borderSubtle,
+            ),
+            boxShadow: _hover ? [BoxShadow(color: widget.color.withAlpha(15), blurRadius: 16)] : null,
           ),
           child: Row(children: [
             Container(
               width: 40, height: 40,
               decoration: BoxDecoration(
-                color: widget.color.withAlpha(15),
+                color: widget.color.withAlpha(20),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: widget.color.withAlpha(40)),
+                border: Border.all(color: widget.color.withAlpha(50)),
               ),
-              child: Center(child: Icon(widget.icon, size: 18, color: widget.color)),
+              child: Icon(widget.icon, size: 18, color: widget.color),
             ),
             const SizedBox(width: 14),
             Expanded(child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(widget.label,
-                  style: AriaTheme.inter(size: 13, weight: FontWeight.w500,
-                    color: AriaTheme.textSecondary)),
-                const SizedBox(height: 3),
-                Text(widget.desc,
-                  style: AriaTheme.inter(size: 12, color: AriaTheme.textSubtle)),
-              ],
+              crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(widget.format, style: AriaTheme.inter(size: 13, weight: FontWeight.w500, color: AriaTheme.textPrimary)),
+                const SizedBox(height: 2),
+                Text(widget.description, style: AriaTheme.inter(size: 11, color: AriaTheme.textMuted)),
+              ]
             )),
-            const SizedBox(width: 12),
-            if (_loading)
-              SizedBox(width: 18, height: 18,
-                child: CircularProgressIndicator(strokeWidth: 1.5,
-                  color: widget.color))
-            else if (_done)
-              Icon(Icons.check_circle_outline, size: 18, color: AriaTheme.statusEmerald)
+            if (widget.isDownloading)
+              const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 1.5, color: AriaTheme.textMuted))
             else
-              Icon(Icons.download_outlined, size: 18,
-                color: _hover ? widget.color : AriaTheme.textSubtle),
+              Icon(Icons.download_outlined, size: 16, color: _hover ? AriaTheme.brandIndigo : AriaTheme.textSubtle),
           ]),
         ),
       ),
     );
-  }
-
-  Future<void> _download() async {
-    setState(() { _loading = true; _done = false; });
-    await context.read<AriaController>().downloadRunExport(widget.runId, widget.formatKey);
-    if (mounted) setState(() { _loading = false; _done = true; });
   }
 }
 
@@ -1192,6 +1243,13 @@ class _GapsSection extends StatelessWidget {
   const _GapsSection({required this.gaps});
   final List<Map<String, dynamic>> gaps;
 
+  Color _gapSeverityColor(Map<String, dynamic> g) {
+    final s = g['severity'] ?? g['priority'] ?? '';
+    if (s == 'high')   return AriaTheme.statusRed;
+    if (s == 'medium') return AriaTheme.statusAmber;
+    return AriaTheme.brandIndigo;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (gaps.isEmpty) {
@@ -1206,50 +1264,62 @@ class _GapsSection extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       itemCount: gaps.length,
       itemBuilder: (ctx, i) {
-        final gap = gaps[i];
-        final question       = gap['question']       as String? ?? gap['gap'] as String? ?? '';
-        final sev            = gap['severity']       as String? ?? 'medium';
+        final gap         = gaps[i];
+        final sevColor    = _gapSeverityColor(gap);
+        final sev         = gap['severity'] as String? ?? gap['priority'] as String? ?? 'low';
+        final question    = gap['question'] as String? ?? gap['gap'] as String? ?? '';
         final recommendation = gap['recommendation'] as String? ?? '';
-        Color sevColor;
-        switch (sev) {
-          case 'high':   sevColor = AriaTheme.statusRed;   break;
-          case 'medium': sevColor = AriaTheme.statusAmber;  break;
-          default:       sevColor = AriaTheme.textMuted;    break;
-        }
-        return Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: sevColor.withAlpha(8),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: sevColor.withAlpha(25)),
-          ),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Container(width: 3, height: 24,
-                decoration: BoxDecoration(color: sevColor, borderRadius: BorderRadius.circular(2))),
-              const SizedBox(width: 12),
-              Expanded(child: Text(question, style: AriaTheme.inter(
-                size: 13, color: AriaTheme.textSecondary, height: 1.5))),
-              const SizedBox(width: 8),
-              AriaPill(label: sev, color: sevColor),
-            ]),
-            if (recommendation.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: AriaTheme.bg2, borderRadius: BorderRadius.circular(6)),
-                child: Row(children: [
-                  const Icon(Icons.lightbulb_outline, size: 13, color: AriaTheme.statusAmber),
-                  const SizedBox(width: 8),
-                  Expanded(child: Text(recommendation, style: AriaTheme.inter(
-                    size: 12, color: AriaTheme.textMuted, height: 1.5))),
-                ]),
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AriaTheme.cardBg,
+              borderRadius: BorderRadius.circular(8),
+              border: Border(
+                left:   BorderSide(color: sevColor, width: 3),
+                top:    const BorderSide(color: AriaTheme.borderSubtle),
+                right:  const BorderSide(color: AriaTheme.borderSubtle),
+                bottom: const BorderSide(color: AriaTheme.borderSubtle),
               ),
-            ],
-          ]),
-        );
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Expanded(child: Text(
+                  gap['topic'] as String? ?? gap['title'] as String? ?? question,
+                  style: AriaTheme.inter(size: 13, weight: FontWeight.w500, color: AriaTheme.textSecondary))),
+                const SizedBox(width: 8),
+                AriaPill(label: sev, color: sevColor),
+              ]),
+              if ((gap['description'] ?? gap['context']) != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  gap['description'] as String? ?? gap['context'] as String? ?? '',
+                  style: AriaTheme.inter(size: 12, color: AriaTheme.textMuted, height: 1.5),
+                  maxLines: 3, overflow: TextOverflow.ellipsis),
+              ] else if (question.isNotEmpty && (gap['topic'] != null || gap['title'] != null)) ...[
+                const SizedBox(height: 4),
+                Text(question,
+                  style: AriaTheme.inter(size: 12, color: AriaTheme.textMuted, height: 1.5),
+                  maxLines: 3, overflow: TextOverflow.ellipsis),
+              ],
+              if (recommendation.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AriaTheme.bg2, borderRadius: BorderRadius.circular(6)),
+                  child: Row(children: [
+                    const Icon(Icons.lightbulb_outline, size: 13, color: AriaTheme.statusAmber),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(recommendation, style: AriaTheme.inter(
+                      size: 12, color: AriaTheme.textMuted, height: 1.5))),
+                  ]),
+                ),
+              ],
+            ]),
+          ),
+        ]);
       },
     );
   }
