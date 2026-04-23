@@ -173,14 +173,32 @@ Follows `docs/DESIGN.md` (Linear-inspired system) exactly:
    - Save per-connector or bulk save
    - Connectors: Reddit (client_id + secret), Twitter/X (bearer_token), LinkedIn (token), Slack (bot_token), arXiv (no auth), PubMed (api_key), Semantic Scholar (api_key), YouTube (api_key), Vimeo (access_token), Podcast (none), Medium (no auth), Dev.to (api_key), HackerNews (no auth), Substack (no auth), RSS (no auth), Wikipedia (no auth), GitHub (token), PDF (no auth), Search (api_key), Government (no auth)
 
-2. **Default Mission**
+2. **LLM — Cloud Providers**
+   - Select active cloud LLM provider: OpenAI / Anthropic / Google Gemini / Cohere / custom
+   - Per-provider fields: API key, model name (dropdown or text), temperature, max tokens
+   - Status badge: connected / error / not configured
+   - "Test" button triggers a quick ping to verify the key works
+
+3. **LLM — Local Connection**
+   - Enable/disable local LLM mode (toggle)
+   - When enabled: Ollama base URL (default `http://localhost:11434`), model name input (e.g. `llama3`, `mistral`)
+   - Connection test button — pings the local endpoint and lists available models
+   - Local mode overrides cloud provider for cleaning/ensemble steps when active
+
+4. **LLM Ensemble**
+   - Enable/disable the LLM ensemble agent (`LLMEnsembleAgent`) — toggle
+   - Ensemble model selection: choose which providers/models participate (multi-select from configured providers)
+   - Ensemble strategy: voting / first-wins / merge (radio select)
+   - Used during the cleaning/synthesis phase of each run
+
+5. **Default Mission**
    - Paste/upload default mission YAML used when launching without one
 
-3. **Output**
+6. **Output**
    - Default export formats (checkboxes: PDF / HTML / JSON)
    - Output directory path (for CLI integration)
 
-4. **Appearance**
+7. **Appearance**
    - (Reserved) Dark mode only for now — no toggle needed
 
 ---
