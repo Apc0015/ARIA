@@ -44,12 +44,19 @@ app = FastAPI(
     description="Agentic Research Intelligence Architecture",
 )
 
+import os as _os
+
+_ALLOWED_ORIGINS = _os.environ.get(
+    "ARIA_ALLOWED_ORIGINS",
+    "http://localhost:8765,http://127.0.0.1:8765,http://localhost:3000,http://localhost:4200",
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-    allow_credentials=True,
+    allow_origins=_ALLOWED_ORIGINS,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-API-Key"],
+    allow_credentials=False,
 )
 
 # ---------------------------------------------------------------------------
