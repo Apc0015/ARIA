@@ -59,6 +59,9 @@ app.add_middleware(
     allow_credentials=False,
 )
 
+from aria.api.middleware.auth import ApiKeyMiddleware
+app.add_middleware(ApiKeyMiddleware)
+
 # ---------------------------------------------------------------------------
 # Real backend – register RunManager and all routers
 # ---------------------------------------------------------------------------

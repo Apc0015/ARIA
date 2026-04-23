@@ -17,6 +17,12 @@ except ImportError:
     HAS_CLIENT = False
     USE_REAL_BACKEND = False
 
+# Import the generated key so tests can authenticate
+try:
+    from aria.api.middleware.auth import _API_KEY as _TEST_KEY
+except ImportError:
+    _TEST_KEY = ""
+
 skip_no_client = pytest.mark.skipif(not HAS_CLIENT, reason="fastapi TestClient not available")
 skip_demo_mode = pytest.mark.skipif(not USE_REAL_BACKEND, reason="aria.engine not installed (demo mode)")
 
@@ -26,6 +32,8 @@ def client():
     if not HAS_CLIENT:
         pytest.skip("TestClient unavailable")
     with TestClient(app, raise_server_exceptions=False) as c:
+        # Inject API key into all requests via headers
+        c.headers.update({"X-API-Key": _TEST_KEY})
         yield c
 
 
