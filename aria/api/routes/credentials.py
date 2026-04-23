@@ -23,4 +23,4 @@ async def get_credentials(run_manager: RunManager = Depends(get_run_manager)):
 async def save_credentials(payload: dict, run_manager: RunManager = Depends(get_run_manager)):
     """Save credentials."""
     path = run_manager.save_credentials(payload)
-    return {"status": "saved", "path": str(path)}
+    return {"status": "saved"}

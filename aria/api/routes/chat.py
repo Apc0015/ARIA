@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import AsyncGenerator
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -28,52 +28,62 @@ async def analyze(request: ChatMessage):
 
     Returns the intent JSON and any clarifying questions to ask the user.
     """
-    from aria.engine.domains.planner import IntentAgent
-    agent = IntentAgent()
-    intent = await agent.analyze(request.message)
-    return {
-        "topic": intent.topic,
-        "domains": intent.domains,
-        "countries": intent.countries,
-        "data_types": intent.data_types,
-        "time_range": intent.time_range,
-        "confidence": intent.confidence,
-        "pending_questions": intent.pending_questions,
-        "ready": intent.ready,
-    }
+    try:
+        from aria.engine.domains.planner import IntentAgent
+        agent = IntentAgent()
+        intent = await agent.analyze(request.message)
+        return {
+            "topic": intent.topic,
+            "domains": intent.domains,
+            "countries": intent.countries,
+            "data_types": intent.data_types,
+            "time_range": intent.time_range,
+            "confidence": intent.confidence,
+            "pending_questions": intent.pending_questions,
+            "ready": intent.ready,
+        }
+    except ImportError:
+        raise HTTPException(status_code=503, detail="Intent agent unavailable (engine not installed)")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {type(exc).__name__}")
 
 
 @router.post("/clarify")
 async def clarify(request: ClarifyRequest):
     """Refine intent with user's answer to a clarifying question."""
-    from aria.engine.domains.planner import IntentAgent, IntentResult
-    agent = IntentAgent()
+    try:
+        from aria.engine.domains.planner import IntentAgent, IntentResult
+        agent = IntentAgent()
 
-    # Reconstruct IntentResult from serialised state
-    state = request.intent_state
-    intent = IntentResult(
-        original_query=state.get("original_query", ""),
-        topic=state.get("topic", ""),
-        domains=state.get("domains", []),
-        countries=state.get("countries", ["GLOBAL"]),
-        data_types=state.get("data_types", []),
-        time_range=state.get("time_range"),
-        confidence=state.get("confidence", {}),
-        pending_questions=state.get("pending_questions", []),
-        ready=state.get("ready", False),
-    )
+        # Reconstruct IntentResult from serialised state
+        state = request.intent_state
+        intent = IntentResult(
+            original_query=state.get("original_query", ""),
+            topic=state.get("topic", ""),
+            domains=state.get("domains", []),
+            countries=state.get("countries", ["GLOBAL"]),
+            data_types=state.get("data_types", []),
+            time_range=state.get("time_range"),
+            confidence=state.get("confidence", {}),
+            pending_questions=state.get("pending_questions", []),
+            ready=state.get("ready", False),
+        )
 
-    updated = await agent.clarify(intent, request.answer)
-    return {
-        "topic": updated.topic,
-        "domains": updated.domains,
-        "countries": updated.countries,
-        "data_types": updated.data_types,
-        "time_range": updated.time_range,
-        "confidence": updated.confidence,
-        "pending_questions": updated.pending_questions,
-        "ready": updated.ready,
-    }
+        updated = await agent.clarify(intent, request.answer)
+        return {
+            "topic": updated.topic,
+            "domains": updated.domains,
+            "countries": updated.countries,
+            "data_types": updated.data_types,
+            "time_range": updated.time_range,
+            "confidence": updated.confidence,
+            "pending_questions": updated.pending_questions,
+            "ready": updated.ready,
+        }
+    except ImportError:
+        raise HTTPException(status_code=503, detail="Intent agent unavailable (engine not installed)")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Clarification failed: {type(exc).__name__}")
 
 
 @router.post("/plan")
