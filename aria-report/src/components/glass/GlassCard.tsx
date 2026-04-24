@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { HTMLAttributes, forwardRef } from "react";
+import { type HTMLAttributes, forwardRef } from "react";
 
 interface GlassCardProps extends HTMLAttributes<HTMLDivElement> {
   perspective?: boolean;

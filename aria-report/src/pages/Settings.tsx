@@ -13,7 +13,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { useCredentials, useSaveCredentials } from "@/hooks/useCredentials";
-import { SOURCES, SOURCE_CATEGORIES, sourcesByCategory } from "@/lib/sources";
+import { SOURCE_CATEGORIES, sourcesByCategory } from "@/lib/sources";
 import { LLM_CLOUD_PROVIDERS, ENSEMBLE_STRATEGIES } from "@/lib/llm-providers";
 import type { SourceCategory } from "@/lib/sources";
 import type { EnsembleStrategy } from "@/lib/llm-providers";
