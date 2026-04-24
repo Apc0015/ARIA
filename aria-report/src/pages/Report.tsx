@@ -15,7 +15,7 @@ const item = { initial: { opacity: 0, y: 8 }, animate: { opacity: 1, y: 0, trans
 export default function Report() {
   const { runId } = useParams<{ runId: string }>();
   const navigate = useNavigate();
-  const { data: run, isLoading } = useRun(runId ?? "");
+  const { data: run, isLoading, isError } = useRun(runId ?? "");
   const { data: docsData } = useRunDocuments(runId ?? "");
 
   const docs = docsData?.documents ?? [];
@@ -32,6 +32,17 @@ export default function Report() {
         <PageTopbar title="Report" />
         <div className="flex-1 p-5 space-y-3">
           {[1, 2, 3].map((i) => <div key={i} className="glass rounded-lg h-24 animate-pulse" />)}
+        </div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="flex flex-col h-full overflow-hidden">
+        <PageTopbar title="Report" />
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-aria-text3 text-sm">Failed to load report. The run may not exist.</p>
         </div>
       </div>
     );
@@ -118,7 +129,7 @@ export default function Report() {
                     </thead>
                     <tbody>
                       {docs.map((doc, i) => (
-                        <tr key={i} className="border-b border-white/[0.04] hover:bg-white/[0.02]">
+                        <tr key={doc.id ?? doc.url ?? i} className="border-b border-white/[0.04] hover:bg-white/[0.02]">
                           <td className="p-3 text-aria-text2 max-w-xs truncate">
                             {doc.url ? (
                               <a href={doc.url} target="_blank" rel="noreferrer" className="hover:text-aria-accent">

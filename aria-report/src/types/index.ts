@@ -48,6 +48,7 @@ export interface StartRunPayload {
     instructions?: string;
     output_schema?: Record<string, string>;
   };
+  mission_yaml?: string;
   ensemble_models?: string[];
   flags?: Record<string, unknown>;
 }

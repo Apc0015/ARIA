@@ -93,7 +93,20 @@ export default function Settings() {
         }
       />
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Mobile section select */}
+        <div className="sm:hidden flex-shrink-0 border-b border-white/[0.05] px-4 py-2">
+          <select
+            value={activeSection}
+            onChange={(e) => setActiveSection(e.target.value as SectionId)}
+            className="w-full bg-aria-surface border border-white/[0.08] rounded-lg text-[12px] text-aria-text2 px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-aria-accent"
+          >
+            {SECTIONS.map((s) => (
+              <option key={s.id} value={s.id}>{s.label}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-1 overflow-hidden">
         <nav className="w-40 flex-shrink-0 border-r border-white/[0.05] p-3 space-y-0.5 overflow-y-auto hidden sm:block">
           {SECTIONS.map((s) => (
             <button
@@ -172,7 +185,7 @@ export default function Settings() {
                     <CollapsibleTrigger className="w-full flex items-center gap-3 p-4 hover:bg-white/[0.02]">
                       <span className="text-xl">{provider.icon}</span>
                       <span className="text-[13px] font-[590] text-aria-text1 flex-1 text-left">{provider.name}</span>
-                      {provider.fields.some((f) => f.required && Boolean(getCredValue(f.key))) ? (
+                      {provider.fields.every((f) => !f.required || Boolean(getCredValue(f.key))) ? (
                         <span className="text-[9px] text-aria-success bg-aria-success/10 border border-aria-success/20 px-1.5 py-px rounded-full">Configured ✓</span>
                       ) : (
                         <span className="text-[9px] text-aria-text4 bg-white/[0.04] border border-white/[0.06] px-1.5 py-px rounded-full">Not set</span>
@@ -329,6 +342,7 @@ export default function Settings() {
             </motion.div>
           )}
 
+        </div>
         </div>
       </div>
     </div>

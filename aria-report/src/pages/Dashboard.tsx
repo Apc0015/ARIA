@@ -106,7 +106,7 @@ export default function Dashboard() {
               Recent Runs
             </span>
             <button
-              onClick={() => navigate("/report")}
+              onClick={() => navigate("/")}
               className="text-[11px] text-aria-accent hover:text-aria-accent-hover flex items-center gap-1"
             >
               View all <ArrowRight size={10} />

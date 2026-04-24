@@ -40,7 +40,13 @@ export default function Launch() {
         if (s.credentials.length === 0) free_sources[s.id] = enabledSources[s.id] ?? false;
         else auth_sources[s.id] = enabledSources[s.id] ?? false;
       });
-      return api.runs.start({ topic, depth_level: depth as 1 | 2 | 3 | 4 | 5, free_sources, auth_sources });
+      return api.runs.start({
+        topic,
+        depth_level: depth as 1 | 2 | 3 | 4 | 5,
+        free_sources,
+        auth_sources,
+        ...(missionYaml.trim() ? { mission_yaml: missionYaml } : {}),
+      });
     },
     onSuccess: (run) => {
       toast.success("Run started");

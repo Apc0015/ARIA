@@ -113,7 +113,7 @@ export default function Monitor() {
             <div className="space-y-1.5">
               {docs.slice(0, 10).map((doc, i) => (
                 <motion.div
-                  key={i}
+                  key={doc.id ?? doc.url ?? i}
                   initial={{ opacity: 0, x: -8 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: i * 0.03 }}
