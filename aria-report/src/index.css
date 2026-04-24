@@ -4,56 +4,122 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 0 0% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.9%;
-    --primary: 0 0% 9%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-    --accent: 0 0% 96.1%;
-    --accent-foreground: 0 0% 9%;
-    --destructive: 0 84.2% 60.2%;
+    /* ARIA dark theme — always dark */
+    --background: 210 11% 4%;
+    --foreground: 180 3% 97%;
+    --card: 210 6% 6%;
+    --card-foreground: 180 3% 97%;
+    --popover: 210 4% 10%;
+    --popover-foreground: 180 3% 97%;
+    --primary: 235 54% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 4% 10%;
+    --secondary-foreground: 216 17% 65%;
+    --muted: 210 4% 10%;
+    --muted-foreground: 220 6% 57%;
+    --accent: 241 100% 72%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 63% 55%;
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
-    --ring: 0 0% 3.9%;
+    --border: 210 6% 8%;
+    --input: 210 6% 8%;
+    --ring: 241 100% 72%;
     --radius: 0.5rem;
+
+    /* ARIA-specific tokens */
+    --aria-bg: #08090a;
+    --aria-panel: #0f1011;
+    --aria-surface: #191a1b;
+    --aria-surface-2: #28282c;
+    --aria-text-1: #f7f8f8;
+    --aria-text-2: #d0d6e0;
+    --aria-text-3: #8a8f98;
+    --aria-text-4: #62666d;
+    --aria-brand: #5e6ad2;
+    --aria-accent: #7170ff;
+    --aria-accent-hover: #828fff;
+    --aria-success: #10b981;
+    --aria-border: rgba(255,255,255,0.08);
+    --aria-border-subtle: rgba(255,255,255,0.05);
   }
 
-  .dark {
-    --background: 0 0% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 0 0% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 0 0% 9%;
-    --secondary: 0 0% 14.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 0 0% 14.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
-    --ring: 0 0% 83.1%;
-  }
-}
-
-@layer base {
   * {
     @apply border-border;
+    font-feature-settings: "cv01", "ss03";
   }
+
   body {
     @apply bg-background text-foreground;
+    font-family: 'Inter', -apple-system, system-ui, sans-serif;
+    background-color: var(--aria-bg);
+    color: var(--aria-text-1);
+    -webkit-font-smoothing: antialiased;
   }
 }
+
+/* ── CSS 3D Glass Depth utilities ── */
+@layer utilities {
+  .glass {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .glass-subtle {
+    background: rgba(255, 255, 255, 0.015);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
+  .glass-elevated {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .perspective-card {
+    transform: perspective(400px) rotateX(2deg);
+    transform-origin: bottom center;
+    transform-style: preserve-3d;
+  }
+
+  .perspective-card:hover {
+    transform: perspective(400px) rotateX(0deg) translateY(-3px);
+  }
+
+  .specular-top::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent);
+    border-radius: inherit;
+    pointer-events: none;
+  }
+
+  .inset-glow::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(255,255,255,0.02) 0%, transparent 60%);
+    border-radius: inherit;
+    pointer-events: none;
+  }
+
+  .status-glow-violet {
+    box-shadow: 0 0 6px rgba(113, 112, 255, 0.6);
+  }
+
+  .status-glow-green {
+    box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
+  }
+
+  .brand-glow {
+    box-shadow: 0 0 20px rgba(94, 106, 210, 0.35);
+  }
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
