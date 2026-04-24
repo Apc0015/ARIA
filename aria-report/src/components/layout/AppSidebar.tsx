@@ -11,6 +11,8 @@ const NAV = [
   { to: "/sources", icon: Zap, label: "Sources", exact: false },
 ];
 
+const ALL_NAV = [...NAV, { to: "/settings", icon: Settings, label: "Settings", exact: false }];
+
 function SidebarItem({ to, icon: Icon, label, exact }: typeof NAV[0]) {
   return (
     <Tooltip delayDuration={300}>
@@ -46,17 +48,40 @@ function SidebarItem({ to, icon: Icon, label, exact }: typeof NAV[0]) {
 
 export function AppSidebar() {
   return (
-    <TooltipProvider>
-      <aside className="hidden md:flex w-14 flex-shrink-0 bg-aria-panel border-r border-white/[0.06] flex-col items-center py-3 gap-1">
-        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-aria-brand to-aria-accent flex items-center justify-center text-white text-xs font-[590] mb-3 brand-glow">
-          A
-        </div>
-        {NAV.map((item) => (
-          <SidebarItem key={item.to} {...item} />
+    <>
+      {/* Desktop sidebar */}
+      <TooltipProvider>
+        <aside className="hidden md:flex w-14 flex-shrink-0 bg-aria-panel border-r border-white/[0.06] flex-col items-center py-3 gap-1">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-aria-brand to-aria-accent flex items-center justify-center text-white text-xs font-[590] mb-3 brand-glow">
+            A
+          </div>
+          {NAV.map((item) => (
+            <SidebarItem key={item.to} {...item} />
+          ))}
+          <div className="flex-1" />
+          <SidebarItem to="/settings" icon={Settings} label="Settings" exact={false} />
+        </aside>
+      </TooltipProvider>
+
+      {/* Mobile bottom tab bar */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-14 bg-aria-panel border-t border-white/[0.06] flex items-center justify-around px-2 z-50">
+        {ALL_NAV.map(({ to, icon: Icon, label, exact }) => (
+          <NavLink
+            key={to}
+            to={to}
+            end={exact}
+            className={({ isActive }) =>
+              cn(
+                "flex flex-col items-center gap-0.5 px-3 py-1 rounded-lg transition-colors",
+                isActive ? "text-aria-accent" : "text-aria-text4"
+              )
+            }
+          >
+            <Icon size={18} />
+            <span className="text-[9px] font-[510]">{label}</span>
+          </NavLink>
         ))}
-        <div className="flex-1" />
-        <SidebarItem to="/settings" icon={Settings} label="Settings" exact={false} />
-      </aside>
-    </TooltipProvider>
+      </nav>
+    </>
   );
 }

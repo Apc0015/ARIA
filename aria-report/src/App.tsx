@@ -1,5 +1,6 @@
 import { Outlet, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
+import { Toaster } from "sonner";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 
 const pageVariants = {
@@ -27,6 +28,16 @@ export default function App() {
           </motion.div>
         </AnimatePresence>
       </main>
+      <Toaster
+        theme="dark"
+        toastOptions={{
+          style: {
+            background: "var(--aria-surface)",
+            border: "1px solid var(--aria-border)",
+            color: "var(--aria-text-1)",
+          },
+        }}
+      />
     </div>
   );
 }
