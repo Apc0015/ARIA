@@ -51,6 +51,11 @@ export const SOURCES: SourceDef[] = [
     credentials: [{ key: "PUBMED_API_KEY", label: "API Key", placeholder: "...", required: false, type: "password" }] },
   { id: "semantic_scholar", name: "Semantic Scholar", category: "academic", description: "AI-powered research discovery", icon: "🧠",
     credentials: [{ key: "SEMANTIC_SCHOLAR_API_KEY", label: "API Key", placeholder: "...", required: false, type: "password" }] },
+  { id: "zotero", name: "Zotero", category: "academic", description: "Personal reference library — local connector or cloud API", icon: "🗂️",
+    credentials: [
+      { key: "ZOTERO_API_KEY", label: "Cloud API Key", placeholder: "...", required: false, type: "password" },
+      { key: "ZOTERO_LIBRARY_ID", label: "Library ID", placeholder: "user/group ID", required: false, type: "text" },
+    ] },
   // Social
   { id: "twitter", name: "Twitter / X", category: "social", description: "Tweets and threads", icon: "𝕏",
     credentials: [{ key: "TWITTER_BEARER_TOKEN", label: "Bearer Token", placeholder: "AAAA...", required: true, type: "password" }] },
