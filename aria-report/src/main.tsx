@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import { createBrowserRouter, RouterProvider, Navigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "./index.css";
 import App from "./App";
@@ -22,7 +22,9 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <Dashboard /> },
       { path: "launch", element: <Launch /> },
+      { path: "monitor", element: <Navigate to="/" replace /> },
       { path: "monitor/:runId", element: <Monitor /> },
+      { path: "report", element: <Navigate to="/" replace /> },
       { path: "report/:runId", element: <Report /> },
       { path: "sources", element: <Sources /> },
       { path: "settings", element: <Settings /> },

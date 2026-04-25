@@ -3,8 +3,9 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
-    /* ARIA dark theme — always dark */
+  /* ── Dark theme (default) ── */
+  :root,
+  html.dark {
     --background: 210 11% 4%;
     --foreground: 180 3% 97%;
     --card: 210 6% 6%;
@@ -26,7 +27,6 @@
     --ring: 241 100% 72%;
     --radius: 0.5rem;
 
-    /* ARIA-specific tokens */
     --aria-bg: #08090a;
     --aria-panel: #0f1011;
     --aria-surface: #191a1b;
@@ -41,6 +41,45 @@
     --aria-success: #10b981;
     --aria-border: rgba(255,255,255,0.08);
     --aria-border-subtle: rgba(255,255,255,0.05);
+  }
+
+  /* ── Light theme ── */
+  html.light {
+    --background: 220 14% 96%;
+    --foreground: 225 15% 8%;
+    --card: 220 13% 93%;
+    --card-foreground: 225 15% 8%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 225 15% 8%;
+    --primary: 235 54% 57%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 13% 90%;
+    --secondary-foreground: 225 10% 30%;
+    --muted: 220 13% 90%;
+    --muted-foreground: 220 8% 46%;
+    --accent: 241 90% 60%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 63% 50%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 220 13% 87%;
+    --input: 220 13% 87%;
+    --ring: 241 90% 60%;
+    --radius: 0.5rem;
+
+    --aria-bg: #f5f6f8;
+    --aria-panel: #eef0f4;
+    --aria-surface: #e4e7ed;
+    --aria-surface-2: #d8dce6;
+    --aria-text-1: #0e0f12;
+    --aria-text-2: #1e2230;
+    --aria-text-3: #4a5168;
+    --aria-text-4: #8a8f98;
+    --aria-brand: #5e6ad2;
+    --aria-accent: #4f4ef0;
+    --aria-accent-hover: #6160ff;
+    --aria-success: #059669;
+    --aria-border: rgba(0,0,0,0.08);
+    --aria-border-subtle: rgba(0,0,0,0.05);
   }
 
   * {
@@ -59,21 +98,34 @@
 
 /* ── CSS 3D Glass Depth utilities ── */
 @layer utilities {
+  /* dark glass */
   .glass {
     background: rgba(255, 255, 255, 0.025);
     border: 1px solid rgba(255, 255, 255, 0.08);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
   }
-
   .glass-subtle {
     background: rgba(255, 255, 255, 0.015);
     border: 1px solid rgba(255, 255, 255, 0.05);
   }
-
   .glass-elevated {
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  /* light glass overrides */
+  html.light .glass {
+    background: rgba(255, 255, 255, 0.65);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+  }
+  html.light .glass-subtle {
+    background: rgba(255, 255, 255, 0.45);
+    border: 1px solid rgba(0, 0, 0, 0.05);
+  }
+  html.light .glass-elevated {
+    background: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(0, 0, 0, 0.1);
   }
 
   .perspective-card {
@@ -123,3 +175,8 @@
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+html.light ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); }
+html.light ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.22); }
+
+/* ── Transitions ── */
+html, body { transition: background-color 0.2s ease, color 0.2s ease; }

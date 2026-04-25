@@ -2,6 +2,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { Toaster } from "sonner";
 import { AppSidebar } from "@/components/layout/AppSidebar";
+import { useTheme } from "@/hooks/useTheme";
 
 const pageVariants = {
   initial: { opacity: 0, x: 16 },
@@ -11,9 +12,11 @@ const pageVariants = {
 
 export default function App() {
   const location = useLocation();
+  const { theme, toggle } = useTheme();
+
   return (
     <div className="flex h-screen overflow-hidden bg-aria-bg">
-      <AppSidebar />
+      <AppSidebar theme={theme} onToggleTheme={toggle} />
       <main className="flex-1 flex flex-col overflow-hidden">
         <AnimatePresence mode="wait">
           <motion.div
@@ -29,7 +32,7 @@ export default function App() {
         </AnimatePresence>
       </main>
       <Toaster
-        theme="dark"
+        theme={theme}
         toastOptions={{
           style: {
             background: "var(--aria-surface)",
