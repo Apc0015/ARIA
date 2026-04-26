@@ -168,6 +168,233 @@
   .brand-glow {
     box-shadow: 0 0 20px rgba(94, 106, 210, 0.35);
   }
+
+  /* ── Typography Hierarchy (DESIGN.md) ── */
+  /* Display sizes */
+  .text-display-xl {
+    font-size: 4.5rem;
+    font-weight: 510;
+    line-height: 1;
+    letter-spacing: -1.584px;
+  }
+  .text-display-lg {
+    font-size: 4rem;
+    font-weight: 510;
+    line-height: 1;
+    letter-spacing: -1.408px;
+  }
+  .text-display {
+    font-size: 3rem;
+    font-weight: 510;
+    line-height: 1;
+    letter-spacing: -1.056px;
+  }
+
+  /* Headings */
+  .text-heading-1 {
+    font-size: 2rem;
+    font-weight: 400;
+    line-height: 1.13;
+    letter-spacing: -0.704px;
+  }
+  .text-heading-2 {
+    font-size: 1.5rem;
+    font-weight: 400;
+    line-height: 1.33;
+    letter-spacing: -0.288px;
+  }
+  .text-heading-3 {
+    font-size: 1.25rem;
+    font-weight: 590;
+    line-height: 1.33;
+    letter-spacing: -0.24px;
+  }
+
+  /* Body text */
+  .text-body-lg {
+    font-size: 1.125rem;
+    font-weight: 400;
+    line-height: 1.6;
+    letter-spacing: -0.165px;
+  }
+  .text-body-emphasis {
+    font-size: 1.0625rem;
+    font-weight: 590;
+    line-height: 1.6;
+    letter-spacing: 0;
+  }
+  .text-body {
+    font-size: 1rem;
+    font-weight: 400;
+    line-height: 1.5;
+    letter-spacing: 0;
+  }
+  .text-body-medium {
+    font-size: 1rem;
+    font-weight: 510;
+    line-height: 1.5;
+    letter-spacing: 0;
+  }
+  .text-body-semibold {
+    font-size: 1rem;
+    font-weight: 590;
+    line-height: 1.5;
+    letter-spacing: 0;
+  }
+
+  /* Small text */
+  .text-small {
+    font-size: 0.9375rem;
+    font-weight: 400;
+    line-height: 1.6;
+    letter-spacing: -0.165px;
+  }
+  .text-small-medium {
+    font-size: 0.9375rem;
+    font-weight: 510;
+    line-height: 1.6;
+    letter-spacing: -0.165px;
+  }
+  .text-small-semibold {
+    font-size: 0.9375rem;
+    font-weight: 590;
+    line-height: 1.6;
+    letter-spacing: -0.165px;
+  }
+  .text-small-light {
+    font-size: 0.9375rem;
+    font-weight: 300;
+    line-height: 1.47;
+    letter-spacing: -0.165px;
+  }
+
+  /* Caption text */
+  .text-caption-lg {
+    font-size: 0.875rem;
+    font-weight: 510;
+    line-height: 1.5;
+    letter-spacing: -0.182px;
+  }
+  .text-caption {
+    font-size: 0.8125rem;
+    font-weight: 400;
+    line-height: 1.5;
+    letter-spacing: -0.13px;
+  }
+
+  /* Label text */
+  .text-label {
+    font-size: 0.75rem;
+    font-weight: 400;
+    line-height: 1.4;
+    letter-spacing: 0;
+  }
+  .text-label-semibold {
+    font-size: 0.75rem;
+    font-weight: 590;
+    line-height: 1.4;
+    letter-spacing: 0;
+  }
+
+  /* Micro & Tiny */
+  .text-micro {
+    font-size: 0.6875rem;
+    font-weight: 510;
+    line-height: 1.4;
+    letter-spacing: 0;
+    text-transform: uppercase;
+  }
+  .text-tiny {
+    font-size: 0.625rem;
+    font-weight: 400;
+    line-height: 1.5;
+    letter-spacing: -0.15px;
+  }
+
+  /* Link variants */
+  .text-link-lg {
+    font-size: 1rem;
+    font-weight: 400;
+    line-height: 1.5;
+    letter-spacing: 0;
+  }
+  .text-link-md {
+    font-size: 0.9375rem;
+    font-weight: 510;
+    line-height: 2.67;
+    letter-spacing: 0;
+  }
+  .text-link-sm {
+    font-size: 0.875rem;
+    font-weight: 510;
+    line-height: 1.5;
+    letter-spacing: 0;
+  }
+  .text-link-caption {
+    font-size: 0.8125rem;
+    font-weight: 400;
+    line-height: 1.5;
+    letter-spacing: -0.13px;
+  }
+
+  /* Monospace */
+  .mono-body {
+    font-family: 'Berkeley Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    font-size: 0.875rem;
+    font-weight: 400;
+    line-height: 1.5;
+    letter-spacing: 0;
+  }
+  .mono-caption {
+    font-family: 'Berkeley Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    font-size: 0.8125rem;
+    font-weight: 400;
+    line-height: 1.5;
+    letter-spacing: 0;
+  }
+  .mono-label {
+    font-family: 'Berkeley Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    font-size: 0.75rem;
+    font-weight: 400;
+    line-height: 1.4;
+    letter-spacing: 0;
+  }
+
+  /* ── Elevation Shadows (DESIGN.md) ── */
+  .shadow-elevation-subtle {
+    box-shadow: rgba(0, 0, 0, 0.03) 0px 1.2px 0px 0px;
+  }
+  .shadow-elevation-surface {
+    box-shadow: rgba(255, 255, 255, 0.05) 0px 0px 0px 1px;
+  }
+  .shadow-elevation-inset {
+    box-shadow: rgba(0, 0, 0, 0.2) 0px 0px 12px 0px inset;
+  }
+  .shadow-elevation-ring {
+    box-shadow: rgba(0, 0, 0, 0.2) 0px 0px 0px 1px;
+  }
+  .shadow-elevation-elevated {
+    box-shadow: rgba(0, 0, 0, 0.4) 0px 2px 4px;
+  }
+  .shadow-elevation-dialog {
+    box-shadow:
+      rgba(0, 0, 0, 0) 0px 8px 2px,
+      rgba(0, 0, 0, 0.01) 0px 5px 2px,
+      rgba(0, 0, 0, 0.04) 0px 3px 2px,
+      rgba(0, 0, 0, 0.07) 0px 1px 1px,
+      rgba(0, 0, 0, 0.08) 0px 0px 1px;
+  }
+  .shadow-elevation-focus {
+    box-shadow: rgba(0, 0, 0, 0.1) 0px 4px 12px;
+  }
+
+  /* Light mode shadow overrides */
+  html.light .shadow-elevation-surface {
+    box-shadow: rgba(0, 0, 0, 0.05) 0px 0px 0px 1px;
+  }
+  html.light .shadow-elevation-inset {
+    box-shadow: rgba(0, 0, 0, 0.1) 0px 0px 12px 0px inset;
+  }
 }
 
 /* ── Scrollbar ── */

@@ -39,7 +39,8 @@ export default function Dashboard() {
         action={
           <Button
             size="sm"
-            className="bg-aria-brand hover:bg-aria-accent text-white text-[11px] h-7 px-3 brand-glow"
+            variant="primary"
+            className="h-7 px-3 brand-glow text-micro"
             onClick={() => navigate("/launch")}
           >
             <Play size={11} className="mr-1" /> New Run
@@ -60,9 +61,9 @@ export default function Dashboard() {
               <GlassCard className="p-4">
                 <NumberTicker
                   value={s.value}
-                  className="block text-3xl font-[590] text-aria-text1 tracking-tight tabular-nums"
+                  className="block text-heading-2 text-aria-text1 tracking-tight tabular-nums"
                 />
-                <span className="block text-[10px] font-[510] text-aria-text4 uppercase tracking-wide mt-1">
+                <span className="block text-micro text-aria-text4 mt-1">
                   {s.label}
                 </span>
               </GlassCard>
@@ -76,15 +77,15 @@ export default function Dashboard() {
             className="p-4 flex items-center gap-3 cursor-pointer hover:glass-elevated"
             onClick={() => navigate("/launch")}
           >
-            <span className="text-aria-text3 text-base">🔍</span>
-            <span className="flex-1 text-[13px] text-aria-text3">
+            <span className="text-aria-text3 text-lg">🔍</span>
+            <span className="flex-1 text-caption text-aria-text3">
               Enter research topic or paste mission YAML…
             </span>
             <div className="hidden sm:flex gap-1.5">
               {["Web", "arXiv", "Social", "Media"].map((s) => (
                 <span
                   key={s}
-                  className="text-[10px] font-[510] px-2 py-0.5 rounded-full border border-aria-accent/30 text-aria-accent bg-aria-accent/[0.08]"
+                  className="text-micro px-2 py-0.5 rounded-full border border-aria-accent/30 text-aria-accent bg-aria-accent/[0.08]"
                 >
                   {s}
                 </span>
@@ -92,7 +93,8 @@ export default function Dashboard() {
             </div>
             <Button
               size="sm"
-              className="bg-aria-brand hover:bg-aria-accent text-white text-[11px] h-7 px-3 ml-2 brand-glow flex-shrink-0"
+              variant="primary"
+              className="h-7 px-3 ml-2 brand-glow flex-shrink-0 text-micro"
             >
               <Play size={11} className="mr-1" /> Launch
             </Button>
@@ -102,12 +104,12 @@ export default function Dashboard() {
         {/* Recent runs */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-[510] text-aria-text4 uppercase tracking-widest">
+            <span className="text-micro text-aria-text4">
               Recent Runs
             </span>
             <button
               onClick={() => navigate("/")}
-              className="text-[11px] text-aria-accent hover:text-aria-accent-hover flex items-center gap-1"
+              className="text-micro text-aria-accent hover:text-aria-accent-hover flex items-center gap-1"
             >
               View all <ArrowRight size={10} />
             </button>
@@ -121,10 +123,11 @@ export default function Dashboard() {
             </div>
           ) : runs.length === 0 ? (
             <GlassCard className="p-8 text-center">
-              <p className="text-aria-text3 text-sm">No runs yet.</p>
+              <p className="text-body text-aria-text3">No runs yet.</p>
               <Button
                 size="sm"
-                className="mt-3 bg-aria-brand hover:bg-aria-accent text-white text-[11px]"
+                variant="primary"
+                className="mt-3 text-micro"
                 onClick={() => navigate("/launch")}
               >
                 Start your first run
