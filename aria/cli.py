@@ -125,8 +125,10 @@ def _run_research(args: argparse.Namespace) -> int:
     try:
         from aria.orchestrator.citation_aware import CitationAwareMasterOrchestrator
         MasterOrchestrator = CitationAwareMasterOrchestrator
-    except (ImportError, Exception):
+    except ImportError:
         pass
+    except Exception as exc:
+        print(f"[aria] Warning: citation-aware orchestrator unavailable: {exc}", file=sys.stderr)
 
     # Fall back to standard orchestrator
     if MasterOrchestrator is None:

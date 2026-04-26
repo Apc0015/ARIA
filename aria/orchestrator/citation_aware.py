@@ -73,7 +73,7 @@ class CitationAwareMasterOrchestrator:
         # - credentials-only validation
         # - clean-only mode
         # - already exported/cleaning stage (skip would have completed)
-        if validate_credentials or clean_only:
+        if validate_credentials or clean_only or collect_only:
             return result
 
         # Check if citation expansion enabled in mission

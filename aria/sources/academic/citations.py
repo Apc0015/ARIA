@@ -20,7 +20,7 @@ from aria.sources.base import BaseCollector, CollectorConfig
 class CitationRef:
     """Extracted citation reference."""
 
-    title: str
+    title: str = ""
     authors: list[str] = field(default_factory=list)
     year: str | None = None
     doi: str | None = None
@@ -298,9 +298,16 @@ class CitationGraphCollector(BaseCollector):
 
                 results = await asyncio.gather(*tasks, return_exceptions=True)
 
+                next_depth_docs = []
                 for result in results:
                     if isinstance(result, dict):
                         yield result
+                        next_depth_docs.append(result)
+
+                # Recurse into cited papers if more depth remains
+                if next_depth_docs and depth + 1 < self.max_depth:
+                    async for deeper in self.collect(next_depth_docs, depth=depth + 1):
+                        yield deeper
 
     async def _fetch_citation(
         self, fetcher: CitationFetcher, citation: CitationRef, depth: int
