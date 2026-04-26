@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTheme } from "@/hooks/useTheme";
 import { motion } from "framer-motion";
 import { PageTopbar } from "@/components/layout/PageTopbar";
 import { GlassCard } from "@/components/glass/GlassCard";
@@ -33,6 +34,7 @@ type SectionId = typeof SECTIONS[number]["id"];
 export default function Settings() {
   const [activeSection, setActiveSection] = useState<SectionId>("connections");
   const { data: creds } = useCredentials();
+  const { theme, toggle: toggleTheme } = useTheme();
   const saveCredentials = useSaveCredentials();
 
   const [localCreds, setLocalCreds] = useState<Record<string, string>>({});
@@ -95,11 +97,11 @@ export default function Settings() {
 
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Mobile section select */}
-        <div className="sm:hidden flex-shrink-0 border-b border-white/[0.05] px-4 py-2">
+        <div className="sm:hidden flex-shrink-0 border-b border-[var(--aria-border-subtle)] px-4 py-2">
           <select
             value={activeSection}
             onChange={(e) => setActiveSection(e.target.value as SectionId)}
-            className="w-full bg-aria-surface border border-white/[0.08] rounded-lg text-[12px] text-aria-text2 px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-aria-accent"
+            className="w-full bg-[var(--aria-surface)] border border-[var(--aria-border)] rounded-[6px] text-[12px] text-aria-text2 px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-aria-accent"
           >
             {SECTIONS.map((s) => (
               <option key={s.id} value={s.id}>{s.label}</option>
@@ -107,7 +109,7 @@ export default function Settings() {
           </select>
         </div>
         <div className="flex flex-1 overflow-hidden">
-        <nav className="w-40 flex-shrink-0 border-r border-white/[0.05] p-3 space-y-0.5 overflow-y-auto hidden sm:block">
+        <nav className="w-40 flex-shrink-0 border-r border-[var(--aria-border-subtle)] p-3 space-y-0.5 overflow-y-auto hidden sm:block">
           {SECTIONS.map((s) => (
             <button
               key={s.id}
@@ -115,7 +117,7 @@ export default function Settings() {
               className={`w-full text-left text-[12px] font-[510] px-3 py-2 rounded-lg transition-all ${
                 activeSection === s.id
                   ? "bg-aria-accent/[0.12] text-aria-accent"
-                  : "text-aria-text3 hover:text-aria-text2 hover:bg-white/[0.03]"
+                  : "text-aria-text3 hover:text-aria-text2 hover:bg-[var(--aria-surface)]"
               }`}
             >
               {s.label}
@@ -134,8 +136,8 @@ export default function Settings() {
                   <div className="space-y-2">
                     {sourcesByCategory(cat.id as SourceCategory).map((src) => (
                       <Collapsible key={src.id}>
-                        <GlassCard perspective={false} className="overflow-hidden">
-                          <CollapsibleTrigger className="w-full flex items-center gap-3 p-3 hover:bg-white/[0.02]">
+                        <GlassCard className="overflow-hidden">
+                          <CollapsibleTrigger className="w-full flex items-center gap-3 p-3 hover:bg-[var(--aria-surface-2)]/30">
                             <span>{src.icon}</span>
                             <span className="text-[13px] font-[510] text-aria-text2 flex-1 text-left">{src.name}</span>
                             {src.credentials.length === 0 ? (
@@ -149,7 +151,7 @@ export default function Settings() {
                           </CollapsibleTrigger>
                           {src.credentials.length > 0 && (
                             <CollapsibleContent>
-                              <div className="px-3 pb-3 space-y-2 border-t border-white/[0.05] pt-3">
+                              <div className="px-3 pb-3 space-y-2 border-t border-[var(--aria-border-subtle)] pt-3">
                                 {src.credentials.map((field) => (
                                   <div key={field.key} className="space-y-1">
                                     <Label className="text-[11px] text-aria-text4">
@@ -160,7 +162,7 @@ export default function Settings() {
                                       value={getCredValue(field.key)}
                                       onChange={(e) => setCredValue(field.key, e.target.value)}
                                       placeholder={field.placeholder}
-                                      className="h-8 bg-transparent border-white/[0.08] text-aria-text2 placeholder:text-aria-text4 text-[12px] focus-visible:ring-aria-accent"
+                                      className="h-8 bg-transparent border-[var(--aria-border)] text-aria-text2 placeholder:text-aria-text4 text-[12px] focus-visible:ring-aria-accent rounded-[6px]"
                                     />
                                   </div>
                                 ))}
@@ -181,19 +183,19 @@ export default function Settings() {
               <p className="text-[11px] text-aria-text4 mb-4">Configure cloud LLM providers for document cleaning and synthesis.</p>
               {LLM_CLOUD_PROVIDERS.map((provider) => (
                 <Collapsible key={provider.id}>
-                  <GlassCard perspective={false} className="overflow-hidden">
-                    <CollapsibleTrigger className="w-full flex items-center gap-3 p-4 hover:bg-white/[0.02]">
+                  <GlassCard className="overflow-hidden">
+                    <CollapsibleTrigger className="w-full flex items-center gap-3 p-4 hover:bg-[var(--aria-surface-2)]/30">
                       <span className="text-xl">{provider.icon}</span>
                       <span className="text-[13px] font-[590] text-aria-text1 flex-1 text-left">{provider.name}</span>
                       {provider.fields.every((f) => !f.required || Boolean(getCredValue(f.key))) ? (
                         <span className="text-[9px] text-aria-success bg-aria-success/10 border border-aria-success/20 px-1.5 py-px rounded-full">Configured ✓</span>
                       ) : (
-                        <span className="text-[9px] text-aria-text4 bg-white/[0.04] border border-white/[0.06] px-1.5 py-px rounded-full">Not set</span>
+                        <span className="text-[9px] text-aria-text4 bg-[var(--aria-surface)] border border-[var(--aria-border)] px-1.5 py-px rounded-full">Not set</span>
                       )}
                       <ChevronRight size={12} className="text-aria-text4" />
                     </CollapsibleTrigger>
                     <CollapsibleContent>
-                      <div className="px-4 pb-4 space-y-3 border-t border-white/[0.05] pt-3">
+                      <div className="px-4 pb-4 space-y-3 border-t border-[var(--aria-border-subtle)] pt-3">
                         {provider.fields.map((field) => (
                           <div key={field.key} className="space-y-1">
                             <Label className="text-[11px] text-aria-text4">
@@ -204,7 +206,7 @@ export default function Settings() {
                               value={getCredValue(field.key)}
                               onChange={(e) => setCredValue(field.key, e.target.value)}
                               placeholder={field.placeholder}
-                              className="h-8 bg-transparent border-white/[0.08] text-aria-text2 placeholder:text-aria-text4 text-[12px] focus-visible:ring-aria-accent"
+                              className="h-8 bg-transparent border-[var(--aria-border)] text-aria-text2 placeholder:text-aria-text4 text-[12px] focus-visible:ring-aria-accent rounded-[6px]"
                             />
                           </div>
                         ))}
@@ -212,7 +214,7 @@ export default function Settings() {
                           <p className="text-[10px] text-aria-text4 mb-1">Available models</p>
                           <div className="flex flex-wrap gap-1.5">
                             {provider.defaultModels.map((m) => (
-                              <span key={m} className="text-[10px] font-[510] text-aria-text3 bg-white/[0.04] border border-white/[0.06] px-2 py-0.5 rounded-full">
+                              <span key={m} className="text-[10px] font-[510] text-aria-text3 bg-[var(--aria-surface)] border border-[var(--aria-border)] px-2 py-0.5 rounded-full">
                                 {m}
                               </span>
                             ))}
@@ -237,16 +239,16 @@ export default function Settings() {
                   <Switch checked={localLLMEnabled} onCheckedChange={setLocalLLMEnabled} className="data-[state=checked]:bg-aria-accent" />
                 </div>
                 {localLLMEnabled && (
-                  <div className="space-y-3 pt-2 border-t border-white/[0.06]">
+                  <div className="space-y-3 pt-2 border-t border-[var(--aria-border)]">
                     <div className="space-y-1">
                       <Label className="text-[11px] text-aria-text4">Ollama Base URL</Label>
-                      <Input value={ollamaUrl} onChange={(e) => setOllamaUrl(e.target.value)} placeholder="http://localhost:11434" className="h-8 bg-transparent border-white/[0.08] text-aria-text2 text-[12px] focus-visible:ring-aria-accent" />
+                      <Input value={ollamaUrl} onChange={(e) => setOllamaUrl(e.target.value)} placeholder="http://localhost:11434" className="h-8 bg-transparent border-[var(--aria-border)] text-aria-text2 placeholder:text-aria-text4 text-[12px] focus-visible:ring-aria-accent rounded-[6px]" />
                     </div>
                     <div className="space-y-1">
                       <Label className="text-[11px] text-aria-text4">Model Name</Label>
-                      <Input value={ollamaModel} onChange={(e) => setOllamaModel(e.target.value)} placeholder="llama3, mistral, phi3…" className="h-8 bg-transparent border-white/[0.08] text-aria-text2 text-[12px] focus-visible:ring-aria-accent" />
+                      <Input value={ollamaModel} onChange={(e) => setOllamaModel(e.target.value)} placeholder="llama3, mistral, phi3…" className="h-8 bg-transparent border-[var(--aria-border)] text-aria-text2 placeholder:text-aria-text4 text-[12px] focus-visible:ring-aria-accent rounded-[6px]" />
                     </div>
-                    <Button size="sm" variant="outline" className="text-[11px] h-7 border-white/[0.08] bg-transparent text-aria-text2 hover:bg-white/[0.04]" onClick={testOllama}>
+                    <Button size="sm" variant="outline" className="text-[11px] h-7 border-[var(--aria-border)] bg-transparent text-aria-text2 hover:bg-[rgba(255,255,255,0.03)] rounded-[6px]" onClick={testOllama}>
                       Test Connection
                     </Button>
                   </div>
@@ -266,7 +268,7 @@ export default function Settings() {
                   <Switch checked={ensembleEnabled} onCheckedChange={setEnsembleEnabled} className="data-[state=checked]:bg-aria-accent" />
                 </div>
                 {ensembleEnabled && (
-                  <div className="space-y-4 pt-2 border-t border-white/[0.06]">
+                  <div className="space-y-4 pt-2 border-t border-[var(--aria-border)]">
                     <div>
                       <Label className="text-[11px] text-aria-text4 mb-2 block">Participating Models</Label>
                       <div className="space-y-1.5">
@@ -279,7 +281,7 @@ export default function Settings() {
                               onCheckedChange={(checked) =>
                                 setEnsembleModels((prev) => checked ? [...prev, key] : prev.filter((m) => m !== key))
                               }
-                              className="border-white/[0.15] data-[state=checked]:bg-aria-accent data-[state=checked]:border-aria-accent"
+                              className="border-[var(--aria-border)] data-[state=checked]:bg-aria-accent data-[state=checked]:border-aria-accent"
                             />
                             <span className="text-[12px] text-aria-text2">{provider} — {model}</span>
                           </label>
@@ -291,7 +293,7 @@ export default function Settings() {
                       <RadioGroup value={ensembleStrategy} onValueChange={(v) => setEnsembleStrategy(v as EnsembleStrategy)} className="space-y-2">
                         {ENSEMBLE_STRATEGIES.map((s) => (
                           <div key={s.value} className="flex items-center gap-2">
-                            <RadioGroupItem value={s.value} id={s.value} className="border-white/[0.2] text-aria-accent" />
+                            <RadioGroupItem value={s.value} id={s.value} className="border-[var(--aria-border)] text-aria-accent" />
                             <Label htmlFor={s.value} className="text-[12px] text-aria-text2 cursor-pointer">{s.label}</Label>
                           </div>
                         ))}
@@ -308,7 +310,7 @@ export default function Settings() {
               <GlassCard className="p-4 space-y-3">
                 <p className="text-[13px] font-[590] text-aria-text1">Default Mission YAML</p>
                 <p className="text-[11px] text-aria-text4">Used when launching a run without specifying a custom mission.</p>
-                <Textarea value={defaultMission} onChange={(e) => setDefaultMission(e.target.value)} placeholder="Paste default mission YAML here…" className="min-h-[240px] bg-transparent border-white/[0.08] text-aria-text2 placeholder:text-aria-text4 font-mono text-xs focus-visible:ring-aria-accent resize-none" />
+                <Textarea value={defaultMission} onChange={(e) => setDefaultMission(e.target.value)} placeholder="Paste default mission YAML here…" className="min-h-[240px] bg-transparent border-[var(--aria-border)] text-aria-text2 placeholder:text-aria-text4 font-mono text-xs focus-visible:ring-aria-accent resize-none rounded-[6px]" />
               </GlassCard>
             </motion.div>
           )}
@@ -323,7 +325,7 @@ export default function Settings() {
                       <Checkbox
                         checked={outputFormats[fmt]}
                         onCheckedChange={(checked) => setOutputFormats((prev) => ({ ...prev, [fmt]: Boolean(checked) }))}
-                        className="border-white/[0.15] data-[state=checked]:bg-aria-accent data-[state=checked]:border-aria-accent"
+                        className="border-[var(--aria-border)] data-[state=checked]:bg-aria-accent data-[state=checked]:border-aria-accent"
                       />
                       <span className="text-[12px] text-aria-text2 uppercase">{fmt}</span>
                     </label>
@@ -334,10 +336,89 @@ export default function Settings() {
           )}
 
           {activeSection === "appearance" && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-              <GlassCard className="p-4">
-                <p className="text-[13px] font-[590] text-aria-text1 mb-1">Appearance</p>
-                <p className="text-[12px] text-aria-text4">ARIA uses dark mode exclusively. Light mode support is not yet available.</p>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
+              <GlassCard className="p-4 space-y-4">
+                <div>
+                  <p className="text-[13px] font-[590] text-aria-text1 mb-0.5">Theme</p>
+                  <p className="text-[11px] text-aria-text4">Choose between dark and light interface</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Dark option */}
+                  <button
+                    onClick={() => theme === "light" && toggleTheme()}
+                    className={[
+                      "relative rounded-lg border-2 overflow-hidden transition-all duration-150 text-left",
+                      theme === "dark"
+                        ? "border-aria-accent shadow-[0_0_0_1px_var(--aria-accent)]"
+                        : "border-[var(--aria-border)] hover:border-[var(--aria-accent)]/40",
+                    ].join(" ")}
+                  >
+                    {/* Dark preview */}
+                    <div className="bg-[#08090a] p-3 h-24 flex flex-col gap-1.5">
+                      <div className="flex gap-1">
+                        <div className="w-1.5 h-1.5 rounded-full bg-[#7170ff]/60" />
+                        <div className="h-1.5 w-8 rounded bg-white/10" />
+                      </div>
+                      <div className="flex gap-1.5">
+                        {["#7170ff", "#10b981", "#f59e0b"].map((c) => (
+                          <div key={c} className="flex-1 h-8 rounded" style={{ background: `${c}18`, border: `1px solid ${c}30` }} />
+                        ))}
+                      </div>
+                      <div className="h-4 rounded bg-white/[0.04] border border-[rgba(255,255,255,0.08)]" />
+                    </div>
+                    <div className="px-3 py-2 bg-[#0f1011] border-t border-[rgba(255,255,255,0.06)]">
+                      <span className="text-[11px] font-[510] text-white/80">Dark</span>
+                      {theme === "dark" && (
+                        <span className="float-right text-[9px] text-[#7170ff] font-[510]">Active</span>
+                      )}
+                    </div>
+                  </button>
+
+                  {/* Light option */}
+                  <button
+                    onClick={() => theme === "dark" && toggleTheme()}
+                    className={[
+                      "relative rounded-lg border-2 overflow-hidden transition-all duration-150 text-left",
+                      theme === "light"
+                        ? "border-aria-accent shadow-[0_0_0_1px_var(--aria-accent)]"
+                        : "border-[var(--aria-border)] hover:border-[var(--aria-accent)]/40",
+                    ].join(" ")}
+                  >
+                    {/* Light preview */}
+                    <div className="bg-[#f5f6f8] p-3 h-24 flex flex-col gap-1.5">
+                      <div className="flex gap-1">
+                        <div className="w-1.5 h-1.5 rounded-full bg-[#4f4ef0]/60" />
+                        <div className="h-1.5 w-8 rounded bg-black/10" />
+                      </div>
+                      <div className="flex gap-1.5">
+                        {["#4f4ef0", "#059669", "#d97706"].map((c) => (
+                          <div key={c} className="flex-1 h-8 rounded" style={{ background: `${c}14`, border: `1px solid ${c}28` }} />
+                        ))}
+                      </div>
+                      <div className="h-4 rounded bg-black/[0.04] border border-black/[0.08]" />
+                    </div>
+                    <div className="px-3 py-2 bg-[#eef0f4] border-t border-black/[0.06]">
+                      <span className="text-[11px] font-[510] text-black/70">Light</span>
+                      {theme === "light" && (
+                        <span className="float-right text-[9px] text-[#4f4ef0] font-[510]">Active</span>
+                      )}
+                    </div>
+                  </button>
+                </div>
+              </GlassCard>
+
+              <GlassCard className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-[13px] font-[590] text-aria-text1 mb-0.5">Quick toggle</p>
+                  <p className="text-[11px] text-aria-text4">
+                    Currently: <span className="text-aria-text2 font-[510] capitalize">{theme}</span> mode
+                  </p>
+                </div>
+                <Switch
+                  checked={theme === "light"}
+                  onCheckedChange={toggleTheme}
+                  className="data-[state=checked]:bg-aria-accent"
+                />
               </GlassCard>
             </motion.div>
           )}

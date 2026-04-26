@@ -42,7 +42,7 @@ export default function Report() {
       <div className="flex flex-col h-full overflow-hidden">
         <PageTopbar title="Report" />
         <div className="flex-1 flex items-center justify-center">
-          <p className="text-aria-text3 text-sm">Failed to load report. The run may not exist.</p>
+          <p className="text-aria-text3 text-[13px] tracking-caption">Failed to load report. The run may not exist.</p>
         </div>
       </div>
     );
@@ -57,7 +57,7 @@ export default function Report() {
           <Button
             size="sm"
             variant="outline"
-            className="text-[11px] h-7 border-white/[0.08] bg-transparent text-aria-text2 hover:bg-white/[0.04]"
+            className="text-[11px] h-7 border-[var(--aria-border)] bg-transparent text-aria-text2 hover:bg-[rgba(255,255,255,0.03)] rounded-[6px]"
             onClick={() => navigate("/launch")}
           >
             <Play size={11} className="mr-1" /> Re-run
@@ -73,7 +73,7 @@ export default function Report() {
             <GlassCard className="p-5 space-y-4">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-lg font-[590] text-aria-text1 tracking-tight">
+                  <h2 className="text-[18px] font-[590] text-aria-text1 tracking-body-lg">
                     {run?.topic ?? "Research Run"}
                   </h2>
                   <p className="text-[12px] text-aria-text4 mt-1">
@@ -99,7 +99,7 @@ export default function Report() {
                     key={label}
                     size="sm"
                     variant="outline"
-                    className="text-[11px] h-8 border-white/[0.08] bg-transparent text-aria-text2 hover:bg-white/[0.04]"
+                    className="text-[11px] h-8 border-[var(--aria-border)] bg-transparent text-aria-text2 hover:bg-[rgba(255,255,255,0.03)] rounded-[6px]"
                     onClick={() => download(url, `aria-${runId}-${label.toLowerCase()}`)}
                   >
                     <Icon size={11} className="mr-1.5" /> {label}
@@ -115,11 +115,11 @@ export default function Report() {
               <p className="text-[10px] font-[510] text-aria-text4 uppercase tracking-widest mb-2">
                 Documents ({totalDocs.toLocaleString()})
               </p>
-              <GlassCard perspective={false} className="overflow-hidden">
+              <GlassCard className="overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-[12px]">
                     <thead>
-                      <tr className="border-b border-white/[0.06]">
+                      <tr className="border-b border-[var(--aria-border)]">
                         {["Title", "Source", "Score"].map((h) => (
                           <th key={h} className="text-left p-3 text-[10px] font-[510] text-aria-text4 uppercase tracking-wide">
                             {h}
@@ -129,7 +129,7 @@ export default function Report() {
                     </thead>
                     <tbody>
                       {docs.map((doc, i) => (
-                        <tr key={doc.id ?? doc.url ?? i} className="border-b border-white/[0.04] hover:bg-white/[0.02]">
+                        <tr key={doc.id ?? doc.url ?? i} className="border-b border-[var(--aria-border-subtle)] hover:bg-[var(--aria-surface)]/40">
                           <td className="p-3 text-aria-text2 max-w-xs truncate">
                             {doc.url ? (
                               <a href={doc.url} target="_blank" rel="noreferrer" className="hover:text-aria-accent">

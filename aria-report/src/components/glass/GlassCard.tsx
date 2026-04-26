@@ -2,11 +2,16 @@ import { cn } from "@/lib/utils";
 import { type HTMLAttributes, forwardRef } from "react";
 
 interface GlassCardProps extends HTMLAttributes<HTMLDivElement> {
-  perspective?: boolean;
   elevated?: boolean;
   featured?: boolean;
 }
 
+/**
+ * GlassCard — Linear-style elevated surface.
+ * Elevation via background luminance stepping (not shadows):
+ *   default: rgba(255,255,255,0.03) — Level 2 surface
+ *   elevated: rgba(255,255,255,0.05) — Level 3 surface
+ */
 export const GlassCard = forwardRef<HTMLDivElement, GlassCardProps>(
   ({ className, perspective = true, elevated = false, featured = false, children, ...props }, ref) => (
     <div

@@ -44,13 +44,13 @@ export default function Monitor() {
             </span>
             <NumberTicker
               value={totalDocs}
-              className="text-2xl font-[590] text-aria-text1 tabular-nums"
+              className="text-[20px] font-[590] text-aria-text1 tabular-nums tracking-h3"
               suffix=" docs"
             />
           </div>
           <Progress
             value={progress}
-            className="h-1 bg-white/[0.06] [&>div]:bg-aria-accent [&>div]:transition-all [&>div]:duration-500"
+            className="h-1 bg-[var(--aria-surface)] [&>div]:bg-aria-accent [&>div]:transition-all [&>div]:duration-500"
           />
           <div className="flex justify-between text-[10px] text-aria-text4">
             <span>Stage: {run?.stage ?? "—"}</span>
@@ -82,7 +82,7 @@ export default function Monitor() {
                           <span className="w-1.5 h-1.5 rounded-full bg-aria-accent animate-pulse-dot" />
                         )}
                       </div>
-                      <div className="h-0.5 bg-white/[0.06] rounded-full overflow-hidden">
+                      <div className="h-0.5 bg-[var(--aria-surface)] rounded-full overflow-hidden">
                         {sourceActive && (
                           <motion.div
                             className="h-full bg-aria-accent rounded-full"
@@ -118,7 +118,7 @@ export default function Monitor() {
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: i * 0.03 }}
                 >
-                  <GlassCard perspective={false} className="p-3 flex items-center gap-3">
+                  <GlassCard className="p-3 flex items-center gap-3">
                     <span className="text-[10px] font-[510] text-aria-accent uppercase px-1.5 py-0.5 rounded bg-aria-accent/[0.08] border border-aria-accent/20 flex-shrink-0">
                       {doc.source}
                     </span>
@@ -139,10 +139,10 @@ export default function Monitor() {
         {(run?.status === "completed" || run?.status === "failed") && (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
             <GlassCard className="p-4 text-center border-aria-success/20">
-              <p className={`text-sm font-[510] ${run.status === "completed" ? "text-aria-success" : "text-red-400"}`}>
+              <p className={`text-[13px] font-[510] tracking-caption ${run.status === "completed" ? "text-aria-success" : "text-red-400"}`}>
                 {run.status === "completed" ? "✓ Run complete — redirecting to report…" : "✗ Run failed"}
               </p>
-              {run.error && <p className="text-aria-text4 text-xs mt-1">{run.error}</p>}
+              {run.error && <p className="text-aria-text4 text-[11px] mt-1">{run.error}</p>}
             </GlassCard>
           </motion.div>
         )}

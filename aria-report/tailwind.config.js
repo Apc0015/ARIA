@@ -41,20 +41,46 @@ module.exports = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        /* ARIA design tokens — all via CSS variables for theme switching */
         aria: {
-          bg: "#08090a",
-          panel: "#0f1011",
-          surface: "#191a1b",
-          "surface-2": "#28282c",
-          text1: "#f7f8f8",
-          text2: "#d0d6e0",
-          text3: "#8a8f98",
-          text4: "#62666d",
-          brand: "#5e6ad2",
-          accent: "#7170ff",
-          "accent-hover": "#828fff",
-          success: "#10b981",
+          bg:             "var(--aria-bg)",
+          panel:          "var(--aria-panel)",
+          surface:        "var(--aria-surface)",
+          "surface-2":    "var(--aria-surface-2)",
+          text1:          "var(--aria-text-1)",
+          text2:          "var(--aria-text-2)",
+          text3:          "var(--aria-text-3)",
+          text4:          "var(--aria-text-4)",
+          brand:          "var(--aria-brand)",
+          accent:         "var(--aria-accent)",
+          "accent-hover": "var(--aria-accent-hover)",
+          success:        "var(--aria-success)",
         },
+      },
+      fontFamily: {
+        /* Inter Variable — full weight + optical size axis */
+        sans: ['Inter', 'Inter Variable', '-apple-system', 'SF Pro Display', 'system-ui', 'sans-serif'],
+        /* Berkeley Mono substitute — JetBrains Mono */
+        mono: ['JetBrains Mono', 'Berkeley Mono', 'ui-monospace', 'SF Mono', 'Menlo', 'monospace'],
+      },
+      fontWeight: {
+        /* Linear's signature between-weights */
+        light:     '300',
+        normal:    '400',
+        ui:        '510',   /* Linear's default emphasis weight */
+        semibold:  '590',   /* Strong emphasis — max Linear uses */
+        bold:      '620',   /* Display numbers only */
+      },
+      letterSpacing: {
+        /* Linear typographic scale */
+        'display-xl': '-1.584px',
+        'display-lg': '-1.408px',
+        'display':    '-1.056px',
+        'h1':         '-0.704px',
+        'h2':         '-0.288px',
+        'h3':         '-0.24px',
+        'body-lg':    '-0.165px',
+        'caption':    '-0.13px',
       },
       borderRadius: {
         xs: "2px",
@@ -93,15 +119,17 @@ module.exports = {
       },
       keyframes: {
         "accordion-down": { from: { height: "0" }, to: { height: "var(--radix-accordion-content-height)" } },
-        "accordion-up": { from: { height: "var(--radix-accordion-content-height)" }, to: { height: "0" } },
-        "pulse-dot": { "0%, 100%": { opacity: "1", transform: "scale(1)" }, "50%": { opacity: "0.5", transform: "scale(0.8)" } },
-        "bar-breathe": { "0%, 100%": { opacity: "0.7" }, "50%": { opacity: "1" } },
+        "accordion-up":   { from: { height: "var(--radix-accordion-content-height)" }, to: { height: "0" } },
+        "pulse-dot":      { "0%, 100%": { opacity: "1", transform: "scale(1)" }, "50%": { opacity: "0.5", transform: "scale(0.8)" } },
+        "bar-breathe":    { "0%, 100%": { opacity: "0.7" }, "50%": { opacity: "1" } },
+        "fade-in":        { from: { opacity: "0", transform: "translateY(6px)" }, to: { opacity: "1", transform: "translateY(0)" } },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
-        "accordion-up": "accordion-up 0.2s ease-out",
-        "pulse-dot": "pulse-dot 1.4s ease-in-out infinite",
-        "bar-breathe": "bar-breathe 1.5s ease-in-out infinite",
+        "accordion-up":   "accordion-up 0.2s ease-out",
+        "pulse-dot":      "pulse-dot 1.4s ease-in-out infinite",
+        "bar-breathe":    "bar-breathe 1.5s ease-in-out infinite",
+        "fade-in":        "fade-in 0.2s ease-out",
       },
     },
   },

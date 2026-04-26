@@ -44,6 +44,8 @@ export const SOURCES: SourceDef[] = [
     credentials: [{ key: "GITHUB_TOKEN", label: "Personal Access Token", placeholder: "ghp_...", required: false, type: "password" }] },
   { id: "government", name: "Government", category: "web", description: "Official government publications", icon: "🏛️",
     credentials: [] },
+  { id: "notion", name: "Notion", category: "web", description: "Pages and databases from your Notion workspace", icon: "📝",
+    credentials: [{ key: "NOTION_API_KEY", label: "Integration Token", placeholder: "secret_...", required: true, type: "password" }] },
   // Academic
   { id: "arxiv", name: "arXiv", category: "academic", description: "Preprints in physics, math, CS, biology", icon: "🎓",
     credentials: [] },

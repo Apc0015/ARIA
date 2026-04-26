@@ -12,15 +12,17 @@ export function PageTopbar({ title, subtitle, action, className }: PageTopbarPro
   return (
     <header
       className={cn(
-        "h-11 flex-shrink-0 flex items-center gap-2 px-5 border-b border-white/[0.05]",
+        "h-12 flex-shrink-0 flex items-center gap-2 px-5",
+        "border-b border-[var(--aria-border-subtle)]",
+        "bg-[var(--aria-panel)]/80 backdrop-blur-sm",
         className
       )}
     >
-      <span className="text-[13px] font-[510] text-aria-text1">{title}</span>
+      <span className="text-[13px] font-[590] text-aria-text1 tracking-caption">{title}</span>
       {subtitle && (
         <>
-          <span className="text-aria-text4">/</span>
-          <span className="text-[13px] text-aria-text4 truncate max-w-[200px]">{subtitle}</span>
+          <span className="text-aria-text4 text-[13px] font-[510]">/</span>
+          <span className="text-[13px] font-[510] text-aria-text4 truncate max-w-[240px]">{subtitle}</span>
         </>
       )}
       <div className="flex-1" />
