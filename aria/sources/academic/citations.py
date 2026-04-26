@@ -350,7 +350,9 @@ class CitationGraphCollector(BaseCollector):
         }
 
 
-# Register the collector
-from aria.sources.registry import SourceRegistry
-
-SourceRegistry.register("citation_graph", CitationGraphCollector)
+# Register the collector if registry is available
+try:
+    from aria.sources.registry import SourceRegistry
+    SourceRegistry.register("citation_graph", CitationGraphCollector)
+except ImportError:
+    pass

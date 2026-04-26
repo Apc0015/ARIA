@@ -1,0 +1,25 @@
+# Example mission with citation graph expansion enabled
+
+collection:
+  topic: "transformer attention mechanisms"
+  sources:
+    - web
+    - academic
+    - arxiv
+  depth_level: 1
+
+citation_expansion:
+  enabled: true
+  max_depth: 1
+  max_citations_per_paper: 20
+  max_concurrent_fetches: 5
+  only_academic: true
+
+cleaning:
+  enabled: true
+  deduplication: true
+  quality_filter: true
+
+export:
+  format: json
+  include_metadata: true
