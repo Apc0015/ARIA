@@ -225,16 +225,44 @@ class InfoCollectorOrchestrator:
                 except Exception as exc:
                     self._log.debug("Auto domain plan failed (falling back to standard): %s", exc)
 
-        await self._emit("query_plan", f"Planning research strategy for: '{topic}'")
-        query_plan = await self._plan_queries(topic, intent)
-        sub_questions = query_plan.get("sub_questions", [])
-        queries = _flatten_plan_queries(query_plan, max_total=20)
-        await self._emit(
-            "query_plan",
-            f"Research plan: {len(sub_questions)} sub-questions, {len(queries)} queries",
-            queries=queries,
-            sub_questions=sub_questions,
-        )
+        # ── Research Director phased path ─────────────────────────────────────
+        research_brief = mission.get("_research_brief")  # set by API when director was used
+
+        if research_brief:
+            # Brief already built by director — use its queries and override topic
+            resolved = research_brief.get("resolved_topic") or topic
+            topic = resolved
+            sub_questions = research_brief.get("key_questions", [])
+            # Flatten phase queries into the legacy query_plan shape for stats/export
+            all_phase_queries: list[str] = []
+            for ph in research_brief.get("phases", []):
+                all_phase_queries.extend(ph.get("queries", []))
+            queries = list(dict.fromkeys(all_phase_queries))[:20]  # dedupe, cap
+            query_plan = {
+                "sub_questions": sub_questions,
+                "queries": {"general": queries},
+                "source_priorities": {},
+                "entity_seeds": research_brief.get("entities", []),
+            }
+            await self._emit(
+                "query_plan",
+                f"Research Director plan: {len(research_brief.get('phases', []))} phases, "
+                f"{len(sub_questions)} questions, {len(queries)} queries",
+                queries=queries,
+                sub_questions=sub_questions,
+                research_brief=research_brief,
+            )
+        else:
+            await self._emit("query_plan", f"Planning research strategy for: '{topic}'")
+            query_plan = await self._plan_queries(topic, intent)
+            sub_questions = query_plan.get("sub_questions", [])
+            queries = _flatten_plan_queries(query_plan, max_total=20)
+            await self._emit(
+                "query_plan",
+                f"Research plan: {len(sub_questions)} sub-questions, {len(queries)} queries",
+                queries=queries,
+                sub_questions=sub_questions,
+            )
 
         kb = self._init_kb()
         known_urls: set[str] = set()
@@ -273,6 +301,21 @@ class InfoCollectorOrchestrator:
                 raw_docs = raw_docs[:max_docs]
                 raw_store.save(raw_docs)
                 await self._emit("collect_done", f"Collected {len(raw_docs)} unique documents (domain plan)")
+
+            elif research_brief and research_brief.get("phases"):
+                # Research Director phased collection path
+                raw_docs = await self._run_phased_collection(
+                    phases=research_brief["phases"],
+                    max_per_source=max_per_source,
+                    max_docs=max_docs,
+                    mission=mission,
+                    aggregator=aggregator,
+                    authenticated_only=authenticated_only,
+                    public_only=public_only,
+                    credentials_path=credentials_path,
+                )
+                raw_store.save(raw_docs)
+
             else:
                 enabled_sources = collection_cfg.get("sources", {}).get("enabled", ["web", "pdf", "academic"])
                 await self._emit("collect", f"Starting collectors: {enabled_sources}")
@@ -645,6 +688,79 @@ class InfoCollectorOrchestrator:
         except Exception as exc:
             self._log.debug("Image extraction failed: %s", exc)
             return []
+
+    async def _run_phased_collection(
+        self,
+        phases: list[dict],
+        max_per_source: int,
+        max_docs: int,
+        mission: dict,
+        aggregator: "ResultAggregator",
+        authenticated_only: bool,
+        public_only: bool,
+        credentials_path: Optional[str],
+    ) -> list[dict]:
+        """Run phased collection: landscape → deep_dive → critical → latest."""
+        all_docs: list[dict] = []
+        phase_cap = max_docs // max(1, len(phases))  # spread cap across phases
+
+        for phase in phases:
+            name = phase.get("name", "phase")
+            goal = phase.get("goal", "")
+            queries = phase.get("queries", [])
+            source_types = phase.get("source_types", ["web", "academic"])
+            phase_max = phase.get("max_docs", phase_cap)
+
+            await self._emit(
+                "phase_start",
+                f"[{name}] {goal}",
+                phase=name,
+                queries=queries,
+                sources=source_types,
+            )
+
+            if not queries:
+                await self._emit("phase_done", f"[{name}] No queries — skipping", phase=name)
+                continue
+
+            tasks = await self._run_collectors(
+                queries=queries,
+                enabled_sources=source_types,
+                max_per_source=max(5, min(max_per_source, phase_max // max(1, len(source_types)))),
+                mission=mission,
+                authenticated_only=authenticated_only,
+                public_only=public_only,
+                credentials_path=credentials_path,
+            )
+
+            all_batches = await asyncio.gather(*tasks, return_exceptions=True)
+            batches: list[list[dict]] = []
+            for b in all_batches:
+                if isinstance(b, Exception):
+                    self._log.warning("[%s] Collector error: %s", name, _scrub(str(b)))
+                elif b:
+                    batches.append(b)
+
+            phase_docs = await aggregator.aggregate(batches)
+            phase_docs = phase_docs[:phase_max]
+
+            for doc in phase_docs:
+                doc["_phase"] = name  # tag for reporting
+
+            all_docs.extend(phase_docs)
+            await self._emit(
+                "phase_done",
+                f"[{name}] {len(phase_docs)} docs",
+                phase=name,
+                count=len(phase_docs),
+                total_so_far=len(all_docs),
+            )
+
+            if len(all_docs) >= max_docs:
+                break
+
+        await self._emit("collect_done", f"Phased collection: {len(all_docs)} total docs across {len(phases)} phases")
+        return all_docs[:max_docs]
 
     # ------------------------------------------------------------------
     # Collectors

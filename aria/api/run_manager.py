@@ -154,6 +154,13 @@ class RunManager:
         output_dir = self.base_settings.runs_dir / run_id
         output_dir.mkdir(parents=True, exist_ok=True)
         mission = load_mission_text(payload["mission_yaml"])
+
+        # Attach research brief from Research Director (enables phased collection)
+        research_brief = payload.get("research_brief")
+        if research_brief:
+            mission = dict(mission)
+            mission["_research_brief"] = research_brief
+
         state = RunState(run_id=run_id, mission=mission, output_dir=str(output_dir))
         async with self._lock:
             self.runs[run_id] = state

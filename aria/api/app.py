@@ -22,6 +22,7 @@ try:
     from aria.api.run_manager import RunManager
     from aria.api.routes import (
         credentials_router,
+        director_router,
         exports_router,
         flutter_router,
         health_router,
@@ -82,6 +83,7 @@ if USE_REAL_BACKEND:
     app.include_router(missions_router)
     app.include_router(domains_router)   # ARIA 5.0: domain/country discovery + analysis
     app.include_router(chat_router)      # ARIA 5.0: intent agent streaming chat
+    app.include_router(director_router)  # Research Director: pre-flight conversation
 
 # ---------------------------------------------------------------------------
 # Demo / fallback routes (only active when aria.engine is not available)

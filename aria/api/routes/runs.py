@@ -75,16 +75,35 @@ async def start_run(payload: dict, run_manager: RunManager = Depends(get_run_man
     Accepts either:
     - Flutter UI format: {topic, intent, depth_level, free_sources, ...}
     - Direct format:     {mission_yaml: "..."}
+
+    Optional: include director_session_id to wire in the Research Director brief.
     """
+    # Attach research brief from a completed Director session if provided
+    director_session_id = payload.get("director_session_id")
+    research_brief: dict | None = None
+    if director_session_id:
+        from aria.api.routes.director import _sessions
+        session = _sessions.get(director_session_id)
+        if session and session.done and session.brief:
+            research_brief = session.brief
+            # Override topic from resolved brief if topic not in payload
+            if "topic" not in payload and research_brief.get("resolved_topic"):
+                payload = dict(payload)
+                payload["topic"] = research_brief["resolved_topic"]
+
     # Convert Flutter payload to mission_yaml if needed
     if "mission_yaml" not in payload and "topic" in payload:
         payload = {
             "mission_yaml": _flutter_payload_to_mission_yaml(payload),
             # Preserve fields the orchestrator/run_manager reads from payload
-            "flags":       payload.get("flags", {}),
-            "credentials": payload.get("credentials"),
-            "auth_tokens": payload.get("auth_tokens", {}),
+            "flags":        payload.get("flags", {}),
+            "credentials":  payload.get("credentials"),
+            "auth_tokens":  payload.get("auth_tokens", {}),
+            "research_brief": research_brief,
         }
+    elif research_brief:
+        payload = dict(payload)
+        payload["research_brief"] = research_brief
 
     try:
         state = await run_manager.start_run(payload)
