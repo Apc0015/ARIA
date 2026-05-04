@@ -31,7 +31,7 @@ pyzotero>=1.5
 # Office / multi-format → Markdown conversion (Zotero attachments, DOCX, PPTX, XLSX)
 markitdown[docx,pptx,xlsx,pdf]>=0.1.5
 # Optional: JS-aware crawling — replaces retry-Camofox as web extraction fallback
-# crawl4ai>=0.6.0
+crawl4ai>=0.6.0
 # Intelligence layer (optional — graceful fallback if not installed)
 datasketch>=1.6
 sentence-transformers>=2.7

@@ -24,6 +24,10 @@ try:
     _CRAWL4AI_AVAILABLE = True
 except ImportError:
     _CRAWL4AI_AVAILABLE = False
+    logging.getLogger("aria").info(
+        "crawl4ai not installed — JS-heavy pages fall back to "
+        "Playwright/Wayback. Enable with: pip install crawl4ai>=0.6.0"
+    )
 
 logger = logging.getLogger("aria")
 
