@@ -75,6 +75,37 @@ export const SOURCES: SourceDef[] = [
   { id: "podcast", name: "Podcast", category: "media", group: "standard", description: "Podcast transcripts via RSS", icon: "🎙️",
     credentials: [] },
 
+  // ── New academic sources ──────────────────────────────────────────────────
+  { id: "crossref", name: "CrossRef", category: "academic", group: "standard",
+    description: "Scholarly metadata for 140M+ publications with citation counts", icon: "📑",
+    credentials: [] },
+  { id: "core_ac", name: "CORE", category: "academic", group: "standard",
+    description: "300M+ open access full-text research papers", icon: "🔓",
+    credentials: [{ key: "CORE_API_KEY", label: "API Key (optional)", placeholder: "...", required: false, type: "password" }] },
+  { id: "europe_pmc", name: "Europe PMC", category: "academic", group: "standard",
+    description: "Biomedical literature including bioRxiv, medRxiv, PubMed Central", icon: "🧬",
+    credentials: [] },
+  { id: "ssrn", name: "SSRN", category: "academic", group: "standard",
+    description: "Social science and economics preprints", icon: "📊",
+    credentials: [] },
+  { id: "base_search", name: "BASE Search", category: "academic", group: "standard",
+    description: "Bielefeld Academic Search Engine — 300M+ open access documents", icon: "🏛",
+    credentials: [] },
+  // ── New knowledge & data sources ──────────────────────────────────────────
+  { id: "wikidata", name: "Wikidata", category: "web", group: "standard",
+    description: "Structured entity knowledge base from Wikimedia Foundation", icon: "🔗",
+    credentials: [] },
+  { id: "internet_archive", name: "Internet Archive", category: "data", group: "standard",
+    description: "Archived web pages, books, and documents from the Wayback Machine", icon: "🏺",
+    credentials: [] },
+  { id: "propublica", name: "ProPublica", category: "data", group: "standard",
+    description: "US Congress bills, votes, and nonprofit financial records", icon: "⚖️",
+    credentials: [{ key: "PROPUBLICA_API_KEY", label: "API Key (optional)", placeholder: "...", required: false, type: "password" }] },
+  // ── New social sources ─────────────────────────────────────────────────────
+  { id: "mastodon", name: "Mastodon", category: "social", group: "standard",
+    description: "Public posts from mastodon.social — decentralised social network", icon: "🐘",
+    credentials: [{ key: "MASTODON_ACCESS_TOKEN", label: "Access Token (optional)", placeholder: "...", required: false, type: "password" }] },
+
   // ── Advanced (OSINT / Cybersecurity) — hidden by default ──────────────────
   { id: "shodan", name: "Shodan", category: "osint", group: "advanced",
     description: "Internet-connected device and service discovery", icon: "📡",

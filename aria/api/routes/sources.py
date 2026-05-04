@@ -9,6 +9,9 @@ router = APIRouter()
 # Authoritative group classification for all registered sources.
 # "advanced" sources are hidden in the UI by default (OSINT, niche tools).
 _SOURCE_GROUP: dict[str, str] = {
+    # ProPublica — standard but optional (needs key for Congress API)
+    # (not in advanced group — no key still works for nonprofits)
+
     # OSINT — advanced
     "shodan":          "advanced",
     "censys":          "advanced",
@@ -33,7 +36,15 @@ _ALL_SOURCES = [
     # Media
     "youtube", "vimeo", "podcast",
     # Data
-    "jobs_boards",
+    "jobs_boards", "internet_archive",
+    # New academic
+    "crossref", "core_ac", "europe_pmc", "ssrn", "base_search",
+    # New knowledge
+    "wikidata",
+    # New specialized
+    "propublica",
+    # New social
+    "mastodon",
     # OSINT
     "shodan", "censys", "virustotal", "haveibeenpwned", "whoxy", "hunter",
     "social_searcher",
