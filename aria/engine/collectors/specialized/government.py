@@ -12,7 +12,7 @@ from urllib.parse import quote
 import httpx
 
 from .base import BaseCollector
-from ..utils.camofox import get_client as _camofox
+from ...utils.camofox import get_client as _camofox
 
 logger = logging.getLogger("aria")
 

@@ -51,7 +51,7 @@ _ALL_SOURCES = [
 ]
 
 
-@router.get("/sources")
+@router.get("/api/sources")
 async def list_sources():
     """List all available source IDs with their group classification.
 

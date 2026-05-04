@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import AsyncGenerator, Any
 
 from .base import BaseCollector
-from ..utils.camofox import get_client as _camofox
+from ...utils.camofox import get_client as _camofox
 
 logger = logging.getLogger("aria")
 

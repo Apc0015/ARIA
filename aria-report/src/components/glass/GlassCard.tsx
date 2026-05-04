@@ -4,6 +4,7 @@ import { type HTMLAttributes, forwardRef } from "react";
 interface GlassCardProps extends HTMLAttributes<HTMLDivElement> {
   elevated?: boolean;
   featured?: boolean;
+  perspective?: boolean;
 }
 
 /**

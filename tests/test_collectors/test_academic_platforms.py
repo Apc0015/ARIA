@@ -62,7 +62,7 @@ async def test_ieee_search_yields_docs():
     mock_client.__aexit__ = AsyncMock(return_value=False)
     mock_client.get = AsyncMock(return_value=mock_resp)
 
-    with patch("aria.engine.collectors.academic.core_platforms.httpx.AsyncClient", return_value=mock_client):
+    with patch("aria.engine.collectors.academic.platforms.httpx.AsyncClient", return_value=mock_client):
         c = AcademicPlatformsCollector()
         c._ieee_key = "fake-key"
         c._resolver = MagicMock(resolve=AsyncMock(return_value=None))
@@ -90,7 +90,7 @@ async def test_ieee_invalid_key_yields_nothing():
     mock_client.__aexit__ = AsyncMock(return_value=False)
     mock_client.get = AsyncMock(return_value=mock_resp)
 
-    with patch("aria.engine.collectors.academic.core_platforms.httpx.AsyncClient", return_value=mock_client):
+    with patch("aria.engine.collectors.academic.platforms.httpx.AsyncClient", return_value=mock_client):
         c = AcademicPlatformsCollector()
         c._ieee_key = "bad-key"
         docs = []

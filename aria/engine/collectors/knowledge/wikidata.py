@@ -30,7 +30,8 @@ class WikidataCollector(BaseCollector):
 
     async def collect(self, queries: list[str]) -> AsyncGenerator[dict[str, Any], None]:
         seen: set[str] = set()
-        async with httpx.AsyncClient(timeout=15) as client:
+        headers = {"User-Agent": "ARIA-Research-Bot/5.0 (https://github.com/aria-research; research@aria.local)"}
+        async with httpx.AsyncClient(timeout=15, headers=headers) as client:
             for query in queries[:5]:
                 params = {
                     "action": "wbsearchentities",
