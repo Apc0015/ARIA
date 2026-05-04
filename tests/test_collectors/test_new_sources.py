@@ -266,22 +266,25 @@ async def test_base_search_yields_doc():
 # ── Mastodon ──────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_mastodon_yields_doc():
+async def test_mastodon_yields_doc_via_hashtag_timeline():
+    """Part A: hashtag timeline returns posts without any credentials."""
     from aria.engine.collectors.social.mastodon import MastodonCollector
 
-    fake_resp = {
-        "statuses": [{
-            "id": "123",
-            "url": "https://mastodon.social/@user/123",
-            "content": "<p>Interesting post about AI safety and alignment research.</p>",
-            "created_at": "2024-01-01T12:00:00.000Z",
-            "account": {"acct": "researcher@mastodon.social", "username": "researcher"},
-            "favourites_count": 10,
-            "reblogs_count": 3,
-        }]
-    }
+    # The hashtag timeline endpoint returns a JSON *list* of status objects
+    # (not a dict with a 'statuses' key like the v2 search endpoint).
+    fake_timeline = [
+        {
+            "id": "456",
+            "url": "https://fosstodon.org/@dev/456",
+            "content": "<p>Exploring <strong>AI safety</strong> and alignment research in depth — these are important open problems in modern machine learning and deserve serious scientific attention from the broader research community worldwide.</p>",
+            "created_at": "2024-06-01T10:00:00.000Z",
+            "account": {"acct": "dev@fosstodon.org", "username": "dev"},
+            "favourites_count": 7,
+            "reblogs_count": 2,
+        }
+    ]
     mock_resp = MagicMock(status_code=200)
-    mock_resp.json.return_value = fake_resp
+    mock_resp.json.return_value = fake_timeline
 
     mock_client = AsyncMock()
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -291,7 +294,89 @@ async def test_mastodon_yields_doc():
     with patch("aria.engine.collectors.social.mastodon.httpx.AsyncClient", return_value=mock_client):
         docs = [d async for d in MastodonCollector().collect(["AI safety"])]
 
-    assert len(docs) == 1
+    assert len(docs) >= 1
     assert docs[0]["platform"] == "mastodon"
     assert docs[0]["source_type"] == "social_media"
-    assert "<p>" not in docs[0]["text"]  # HTML stripped
+    assert "<p>" not in docs[0]["text"]        # HTML stripped
+    assert "<strong>" not in docs[0]["text"]   # nested tags stripped too
+    assert docs[0]["word_count"] > 20          # min word count threshold met
+
+
+@pytest.mark.asyncio
+async def test_mastodon_skips_short_content():
+    """Status with <= 20 words must be skipped."""
+    from aria.engine.collectors.social.mastodon import MastodonCollector
+
+    fake_timeline = [
+        {
+            "id": "789",
+            "url": "https://fosstodon.org/@x/789",
+            "content": "<p>Short post.</p>",  # far below 20-word threshold
+            "created_at": "2024-06-01T10:00:00.000Z",
+            "account": {"acct": "x@fosstodon.org", "username": "x"},
+            "favourites_count": 0,
+            "reblogs_count": 0,
+        }
+    ]
+    mock_resp = MagicMock(status_code=200)
+    mock_resp.json.return_value = fake_timeline
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.get = AsyncMock(return_value=mock_resp)
+
+    with patch("aria.engine.collectors.social.mastodon.httpx.AsyncClient", return_value=mock_client):
+        docs = [d async for d in MastodonCollector().collect(["python"])]
+
+    assert docs == []
+
+
+@pytest.mark.asyncio
+async def test_mastodon_ddg_fallback_when_hashtag_returns_nothing():
+    """Part C: DuckDuckGo fallback fires when hashtag timeline returns empty list."""
+    from aria.engine.collectors.social.mastodon import MastodonCollector
+
+    # All hashtag timeline calls return empty lists
+    empty_resp = MagicMock(status_code=200)
+    empty_resp.json.return_value = []
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.get = AsyncMock(return_value=empty_resp)
+
+    ddg_results = [
+        {
+            "href": "https://mastodon.social/@researcher/99",
+            "title": "Researcher on Mastodon",
+            "body": "A long enough snippet about machine learning and neural networks to pass the word count filter in the fallback path.",
+        }
+    ]
+
+    class _FakeDDGS:
+        def __enter__(self): return self
+        def __exit__(self, *_): pass
+        def text(self, *_a, **_kw): return ddg_results
+
+    with patch("aria.engine.collectors.social.mastodon.httpx.AsyncClient", return_value=mock_client):
+        with patch("aria.engine.collectors.social.mastodon.DDGS", _FakeDDGS, create=True):
+            # Patch both possible import paths
+            import sys
+            # Inject a fake ddgs module so the `from ddgs import DDGS` branch resolves
+            import types
+            fake_ddgs_mod = types.ModuleType("ddgs")
+            fake_ddgs_mod.DDGS = _FakeDDGS  # type: ignore[attr-defined]
+            old = sys.modules.get("ddgs")
+            sys.modules["ddgs"] = fake_ddgs_mod
+            try:
+                docs = [d async for d in MastodonCollector().collect(["machine learning"])]
+            finally:
+                if old is None:
+                    sys.modules.pop("ddgs", None)
+                else:
+                    sys.modules["ddgs"] = old
+
+    assert len(docs) >= 1
+    assert docs[0]["platform"] == "mastodon"
+    assert docs[0]["metadata"]["via"] == "ddg_fallback"
