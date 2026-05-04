@@ -17,7 +17,13 @@ import aiohttp
 from bs4 import BeautifulSoup
 
 from .base import BaseCollector
-from ..utils.camofox import get_client as _camofox
+from ...utils.camofox import get_client as _camofox
+
+try:
+    from crawl4ai import AsyncWebCrawler  # type: ignore
+    _CRAWL4AI_AVAILABLE = True
+except ImportError:
+    _CRAWL4AI_AVAILABLE = False
 
 logger = logging.getLogger("aria")
 
@@ -104,21 +110,32 @@ class WebScraperCollector(BaseCollector):
             domain = urlparse(url).netloc
             camofox = _camofox()
 
-            # Try Camofox first for known-blocked domains
+            # Camofox anti-detection browser for sites that block standard requests
             if camofox.available and any(d in domain for d in _BLOCKED_DOMAINS):
                 doc = await self._scrape_via_camofox(url, domain, camofox)
                 if doc:
                     return doc
                 # fall through to plain aiohttp
 
-            # Plain aiohttp
+            # Plain aiohttp: fast path for cooperative sites
             doc = await self._scrape_plain(url, domain)
             if doc:
                 return doc
 
-            # Retry with Camofox if plain returned nothing and Camofox available
+            # Jina AI Reader: proxy-based extraction bypasses JS blocks, no key needed
+            doc = await self._scrape_jina(url, domain)
+            if doc:
+                return doc
+
+            # crawl4ai: full JS rendering with Markdown output (install crawl4ai to enable)
+            if _CRAWL4AI_AVAILABLE:
+                doc = await self._scrape_crawl4ai(url, domain)
+                if doc:
+                    return doc
+
+            # Retry Camofox as last resort for non-blocked domains that failed all other paths
             if camofox.available and not any(d in domain for d in _BLOCKED_DOMAINS):
-                logger.debug("WebScraper: plain failed %s — retrying via Camofox", url)
+                logger.debug("WebScraper: trying Camofox as last resort for %s", url)
                 return await self._scrape_via_camofox(url, domain, camofox)
 
             return None
@@ -194,6 +211,48 @@ class WebScraperCollector(BaseCollector):
             logger.debug("WebScraper: Camofox error %s: %s", url, exc)
         return None
 
+    async def _scrape_jina(self, url: str, domain: str) -> Optional[dict[str, Any]]:
+        """Jina AI Reader: proxy-based extraction, no API key needed.
+
+        Fetches https://r.jina.ai/{url} which returns clean Markdown.
+        """
+        try:
+            jina_url = f"https://r.jina.ai/{url}"
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    jina_url,
+                    timeout=aiohttp.ClientTimeout(total=20),
+                    headers={"User-Agent": "ARIA-Research-Bot/5.0"},
+                ) as resp:
+                    if resp.status == 200:
+                        text = await resp.text()
+                        if len(text) > 100:
+                            logger.debug("WebScraper(jina): OK for %s (%d chars)", url, len(text))
+                            return _make_doc(url, "", text, domain)
+        except Exception as exc:
+            logger.debug("WebScraper(jina): error for %s: %s", url, exc)
+        return None
+
+    async def _scrape_crawl4ai(self, url: str, domain: str) -> Optional[dict[str, Any]]:
+        """crawl4ai: JS-aware crawling with Markdown output.
+
+        Preferred over retry-Camofox when available; requires crawl4ai package.
+        """
+        if not _CRAWL4AI_AVAILABLE:
+            return None
+        try:
+            async with AsyncWebCrawler() as crawler:  # type: ignore[name-defined]
+                result = await crawler.arun(url=url)
+                if result.success and result.markdown:
+                    title = ""
+                    if result.metadata:
+                        title = result.metadata.get("title", "")
+                    logger.debug("WebScraper(crawl4ai): OK for %s (%d chars)", url, len(result.markdown))
+                    return _make_doc(url, title, result.markdown, domain)
+        except Exception as exc:
+            logger.debug("WebScraper(crawl4ai): error for %s: %s", url, exc)
+        return None
+
 
 def _make_doc(
     url: str,
@@ -264,3 +323,4 @@ def _extract_text(html: str) -> tuple[str, str]:
     text = re.sub(r"[ \t]+", " ", text)
 
     return text.strip(), title
+
