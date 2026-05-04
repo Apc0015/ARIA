@@ -12,10 +12,19 @@ build/
 dist/
 *.egg-info/
 
+# Git worktrees
+.claude/worktrees/
+
+# IDE and local development
+.idea/
+.vscode/settings.json
+*.swp
+*.swo
+*.sublime-workspace
+
 credentials/*
 !credentials/.gitignore
 !credentials/README.md
-!credentials/example.json
 
 data/raw/*
 !data/raw/.gitkeep
@@ -23,10 +32,12 @@ data/clean/*
 !data/clean/.gitkeep
 data/exports/*
 !data/exports/.gitkeep
-data/runs/
-
-logs/*
-!logs/.gitkeep
+data/runs/*
+!data/runs/.gitkeep
+data/vectors/*
+!data/vectors/.gitkeep
+data/logs/*
+!data/logs/.gitkeep
 
 aria_studio/.dart_tool/
 aria_studio/build/
