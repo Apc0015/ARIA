@@ -10,6 +10,7 @@ from aria.api.routes.studio import router as studio_router
 from aria.api.routes.domains import router as domains_router
 from aria.api.routes.chat import router as chat_router
 from aria.api.routes.director import router as director_router
+from aria.api.routes.sources import router as sources_router
 
 __all__ = [
     "health_router",
@@ -22,4 +23,5 @@ __all__ = [
     "domains_router",
     "chat_router",
     "director_router",
+    "sources_router",
 ]

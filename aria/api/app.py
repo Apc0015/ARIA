@@ -30,6 +30,7 @@ try:
         runs_router,
         domains_router,
         chat_router,
+        sources_router,
     )
     USE_REAL_BACKEND = True
 except ImportError:
@@ -84,6 +85,7 @@ if USE_REAL_BACKEND:
     app.include_router(domains_router)   # ARIA 5.0: domain/country discovery + analysis
     app.include_router(chat_router)      # ARIA 5.0: intent agent streaming chat
     app.include_router(director_router)  # Research Director: pre-flight conversation
+    app.include_router(sources_router)  # Source listing with group classification
 
 # ---------------------------------------------------------------------------
 # Demo / fallback routes (only active when aria.engine is not available)

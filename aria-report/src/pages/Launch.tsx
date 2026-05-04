@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { api } from "@/lib/api";
-import { SOURCES, SOURCE_CATEGORIES, sourcesByCategory } from "@/lib/sources";
+import { SOURCES, SOURCE_CATEGORIES, sourcesByCategory, advancedSources } from "@/lib/sources";
 import { toast } from "sonner";
 import type { SourceCategory } from "@/lib/sources";
 
@@ -98,6 +98,7 @@ export default function Launch() {
   const [showYaml, setShowYaml] = useState(false);
   const [depth, setDepth] = useState(2);
   const [showConfig, setShowConfig] = useState(false);
+  const [showAdvancedSources, setShowAdvancedSources] = useState(false);
   const [enabledSources, setEnabledSources] = useState<Record<string, boolean>>(
     Object.fromEntries(SOURCES.map((s) => [s.id, ["web", "arxiv", "hackernews"].includes(s.id)]))
   );
@@ -401,13 +402,52 @@ export default function Launch() {
                 </Label>
                 <span className="text-[11px] text-aria-accent">{activeCount} selected</span>
               </div>
-              {SOURCE_CATEGORIES.map((cat) => (
-                <div key={cat.id}>
-                  <p className="text-[10px] font-[510] text-aria-text4 uppercase tracking-widest mb-2">
-                    {cat.label}
-                  </p>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {sourcesByCategory(cat.id as SourceCategory).map((s) => (
+              {SOURCE_CATEGORIES.map((cat) => {
+                const catStandardSources = sourcesByCategory(cat.id as SourceCategory).filter(
+                  (s) => s.group === "standard"
+                );
+                if (catStandardSources.length === 0) return null;
+                return (
+                  <div key={cat.id}>
+                    <p className="text-[10px] font-[510] text-aria-text4 uppercase tracking-widest mb-2">
+                      {cat.label}
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {catStandardSources.map((s) => (
+                        <button
+                          key={s.id}
+                          onClick={() => toggleSource(s.id)}
+                          className={`flex items-center gap-2 p-2 rounded-lg border text-left transition-all text-[12px] ${
+                            enabledSources[s.id]
+                              ? "border-aria-accent/40 bg-aria-accent/[0.08] text-aria-text2"
+                              : "border-white/[0.06] bg-transparent text-aria-text4"
+                          }`}
+                        >
+                          <span>{s.icon}</span>
+                          <span className="font-[510] truncate">{s.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Advanced Sources (OSINT / Cybersecurity) — collapsed by default */}
+              <div className="border-t border-white/[0.06] pt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedSources((v) => !v)}
+                  className="flex w-full items-center justify-between text-[11px] text-aria-text4 hover:text-aria-text2 transition-colors"
+                >
+                  <span className="font-[510] uppercase tracking-widest">
+                    Advanced — Cybersecurity &amp; OSINT
+                  </span>
+                  {showAdvancedSources ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                </button>
+
+                {showAdvancedSources && (
+                  <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {advancedSources.map((s) => (
                       <button
                         key={s.id}
                         onClick={() => toggleSource(s.id)}
@@ -422,8 +462,8 @@ export default function Launch() {
                       </button>
                     ))}
                   </div>
-                </div>
-              ))}
+                )}
+              </div>
             </GlassCard>
 
             {/* Depth config */}
