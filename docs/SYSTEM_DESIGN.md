@@ -78,6 +78,17 @@ The master orchestration engine controlling the entire pipeline.
 | **Government** | data.gov, regulations.gov | Optional | DuckDuckGo |
 | **GitHub** | DuckDuckGo site:github.com OR PyGithub API | Optional | DuckDuckGo |
 
+**Source Groups:**
+
+Sources are classified into two groups that control their visibility in the UI:
+
+| Group | Description | UI Default |
+|-------|-------------|------------|
+| `standard` | Web, academic, social, media — general research sources | Visible, opt-in per source |
+| `advanced` | OSINT and cybersecurity sources — Shodan, Censys, VirusTotal, HaveIBeenPwned, Whoxy, Hunter, Social Searcher, Jobs Boards | Hidden in a collapsible "Advanced — Cybersecurity & OSINT" panel, unchecked by default |
+
+Advanced sources require API keys and are intended for threat intelligence and digital forensics workflows.
+
 **Agent Pattern:**
 ```python
 class BaseCollector(ABC):
