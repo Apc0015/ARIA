@@ -38,8 +38,7 @@ data/vectors/*
 !data/vectors/.gitkeep
 data/logs/*
 !data/logs/.gitkeep
+data/citation-graph/
 
-aria_studio/.dart_tool/
-aria_studio/build/
-aria_studio/.flutter-plugins
-aria_studio/.flutter-plugins-dependencies
+# Local tool caches
+.code-review-graph/

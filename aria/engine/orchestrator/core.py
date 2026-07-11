@@ -1,9 +1,17 @@
-"""Core orchestration engine: coordinates collection, cleaning, and export."""
+"""Core orchestration engine: thin coordinator that calls phase modules.
+
+Phase modules (each exposes one primary async function):
+  planning.py   — query expansion and sub-question generation
+  collection.py — spawning collector tasks in parallel
+  dedup.py      — URL-hash + content-fingerprint + semantic deduplication
+  cleaning.py   — per-document LLM cleaning coordination
+  enrichment.py — knowledge graph, gap detection, image extraction
+  exporting.py  — writing JSON/CSV/Markdown/ZIP outputs to disk
+"""
 
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import logging
 import os
 import re
@@ -12,6 +20,28 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
+
+# ── Phase modules ─────────────────────────────────────────────────────────────
+from aria.engine.orchestrator.planning import (
+    _flatten_plan_queries,
+    _heuristic_plan,
+    run_planning_phase,
+)
+from aria.engine.orchestrator.collection import (
+    CollectorDispatcher,
+    run_collection_phase,
+    run_phased_collection,
+)
+from aria.engine.orchestrator.dedup import _content_fingerprint
+from aria.engine.orchestrator.cleaning import run_cleaning_phase
+from aria.engine.orchestrator.enrichment import _score_documents
+from aria.engine.orchestrator.exporting import run_export_phase
+from aria.engine.orchestrator.citation_crawl import (
+    citation_crawl_enabled,
+    run_citation_crawl_phase,
+)
+from aria.engine.output.citation_exporter import CitationExporter
+from aria.engine.output.bibtex import BibTeXExporter
 
 _SECRET_RE = re.compile(
     r"(sk-[A-Za-z0-9_-]{20,}"
@@ -27,10 +57,9 @@ _SECRET_RE = re.compile(
 def _scrub(msg: str) -> str:
     return _SECRET_RE.sub("[REDACTED]", msg)
 
+
 from aria.engine.cleaner.llm_cleaner import LLMCleaner
 from aria.engine.memory.shared_memory import SharedMemory
-from aria.engine.output.exporter import Exporter
-from aria.engine.output.report import generate_report
 from aria.engine.storage.clean_store import CleanStore
 from aria.engine.storage.raw_store import RawStore
 
@@ -123,10 +152,21 @@ class InfoCollectorOrchestrator:
         config: Any,
         logger: Optional[logging.Logger] = None,
         event_callback: Optional[Callable] = None,
+        credential_scope: Optional[Any] = None,
     ) -> None:
         self._config = config
         self._log = logger or logging.getLogger("aria")
         self._event_callback = event_callback
+        # Per-run credential scope — avoids os.environ mutation in concurrent runs.
+        self._credential_scope = credential_scope
+
+    def _get_key(self, env_name: str, scope_attr: str) -> str:
+        """Return credential: scope override first, then os.environ fallback."""
+        if self._credential_scope:
+            val = getattr(self._credential_scope, scope_attr, None)
+            if val:
+                return val
+        return os.getenv(env_name, "")
 
     async def run(
         self,
@@ -138,13 +178,14 @@ class InfoCollectorOrchestrator:
         public_only: bool = False,
         resume: bool = False,
         credentials_path: Optional[str] = None,
+        raw_dir: Optional[str] = None,
+        run_id: Optional[str] = None,
     ) -> RunResult:
         """Execute a full research collection run."""
-        run_id = str(uuid.uuid4())[:8]
+        run_id = run_id or str(uuid.uuid4())[:8]
         topic = mission.get("collection", {}).get("topic", "research")
         await self._emit("init", f"Starting run {run_id}", run_id=run_id, topic=topic)
 
-        # Setup directories
         runs_dir = Path(self._config.runs_dir)
         run_dir = runs_dir / run_id
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -162,6 +203,7 @@ class InfoCollectorOrchestrator:
                 public_only=public_only,
                 resume=resume,
                 credentials_path=credentials_path,
+                raw_dir=raw_dir,
             )
         except Exception as exc:
             _failed_marker.write_text(_scrub(str(exc)), encoding="utf-8")
@@ -180,14 +222,18 @@ class InfoCollectorOrchestrator:
         public_only: bool,
         resume: bool,
         credentials_path: Optional[str],
+        raw_dir: Optional[str],
     ) -> RunResult:
-        """Inner pipeline body — separated so the outer run() can catch & mark failures."""
+        """Inner pipeline body — delegates each phase to its module."""
+        # Safe default so Python never treats topic as unbound
+        # (assigned unconditionally below, but guard prevents NameError
+        # if control flow ever changes in future refactors).
+        topic = ""
         _pipeline_start = datetime.now(timezone.utc)
-        raw_store = RawStore(run_dir / "raw")
+        raw_store = RawStore(Path(raw_dir) if raw_dir else run_dir / "raw")
         clean_store = CleanStore(run_dir / "clean")
         export_dir = run_dir / "exports"
         export_dir.mkdir(parents=True, exist_ok=True)
-
         shared_memory = SharedMemory(
             backend=self._config.shared_memory_backend,
             redis_url=self._config.redis_url,
@@ -203,6 +249,7 @@ class InfoCollectorOrchestrator:
             return RunResult(run_id=run_id, stats={"validated": True})
 
         collection_cfg = mission.get("collection", {})
+        topic = collection_cfg.get("topic", "research")
         intent = collection_cfg.get("intent", "")
         max_docs = collection_cfg.get("max_documents", 500)
         max_per_source = collection_cfg.get("max_per_source", 50)
@@ -215,29 +262,56 @@ class InfoCollectorOrchestrator:
                 try:
                     from aria.engine.domains.planner import build_collection_plan
                     await self._emit("query_plan", f"Building domain plan for domains={domains_cfg}, countries={countries_cfg}")
-                    domain_plan = await build_collection_plan(
+                    dp = await build_collection_plan(
                         query=topic or intent,
                         domains=domains_cfg,
                         countries=countries_cfg or None,
                     )
                     mission = dict(mission)
-                    mission["_domain_plan"] = domain_plan
+                    mission["_domain_plan"] = dp
                 except Exception as exc:
                     self._log.debug("Auto domain plan failed (falling back to standard): %s", exc)
 
-        # ── Research Director phased path ─────────────────────────────────────
-        research_brief = mission.get("_research_brief")  # set by API when director was used
+        # ── Citation Crawl (optional pre-collection phase) ────────────────────
+        citation_records = []
+        if citation_crawl_enabled(mission):
+            await self._emit("citation_crawl", "Citation crawl phase starting…")
+            try:
+                citation_records = await run_citation_crawl_phase(
+                    mission_config=mission,
+                    output_dir=str(run_dir),
+                    emit_fn=self._event_callback,
+                    log=self._log,
+                )
+                if citation_records:
+                    # Export corpus.json + bibtex + missing-full-text.md
+                    cex = CitationExporter(str(run_dir))
+                    bex = BibTeXExporter(str(run_dir))
+                    export_paths = cex.export(citation_records)
+                    bib_path = bex.export(
+                        citation_records,
+                        filename="references-level0.bib",
+                        level=1,
+                    )
+                    export_paths["bibtex"] = bib_path
+                    await self._emit(
+                        "citation_crawl",
+                        f"Citation crawl outputs written: corpus.json, references-level0.bib, missing-full-text.md",
+                        export_paths=export_paths,
+                    )
+            except Exception as exc:
+                self._log.warning("Citation crawl phase failed (non-fatal): %s", exc)
 
+        # ── Planning ─────────────────────────────────────────────────────────
+        research_brief = mission.get("_research_brief")
         if research_brief:
-            # Brief already built by director — use its queries and override topic
             resolved = research_brief.get("resolved_topic") or topic
             topic = resolved
             sub_questions = research_brief.get("key_questions", [])
-            # Flatten phase queries into the legacy query_plan shape for stats/export
             all_phase_queries: list[str] = []
             for ph in research_brief.get("phases", []):
                 all_phase_queries.extend(ph.get("queries", []))
-            queries = list(dict.fromkeys(all_phase_queries))[:20]  # dedupe, cap
+            queries = list(dict.fromkeys(all_phase_queries))[:20]
             query_plan = {
                 "sub_questions": sub_questions,
                 "queries": {"general": queries},
@@ -264,32 +338,29 @@ class InfoCollectorOrchestrator:
                 sub_questions=sub_questions,
             )
 
+        # ── KB lookup ────────────────────────────────────────────────────────
         kb = self._init_kb()
         known_urls: set[str] = set()
         if kb and not clean_only:
             known_urls = kb.get_known_urls_for_topic(topic)
             if known_urls:
-                await self._emit(
-                    "kb_lookup",
-                    f"KB: skipping {len(known_urls)} already-collected URLs",
-                )
+                await self._emit("kb_lookup", f"KB: skipping {len(known_urls)} already-collected URLs")
 
         aggregator = ResultAggregator(shared_memory, known_urls=known_urls)
-
         raw_docs: list[dict] = []
 
+        # ── Collection ───────────────────────────────────────────────────────
         if clean_only:
             await self._emit("skip_collection", "clean_only=True, loading existing raw docs")
             raw_docs = raw_store.load()
             if not raw_docs:
-                await self._emit("warning", "No raw docs found; running collection anyway")
-                clean_only = False
+                raise FileNotFoundError(
+                    f"clean_only=True requires raw docs at {raw_store.path}"
+                )
 
         if not clean_only:
             domain_plan = mission.get("_domain_plan")
-
             if domain_plan is not None:
-                # ARIA 5.0 domain-plan path
                 await self._emit("collect", f"Running domain plan: {domain_plan.summary}")
                 from aria.engine.orchestrator.department_runner import DepartmentRunner
                 runner = DepartmentRunner(
@@ -300,80 +371,122 @@ class InfoCollectorOrchestrator:
                 raw_docs = await runner.run(domain_plan, aggregator)
                 raw_docs = raw_docs[:max_docs]
                 raw_store.save(raw_docs)
-                await self._emit("collect_done", f"Collected {len(raw_docs)} unique documents (domain plan)")
-
+                await self._emit("collect_done", f"Collected {len(raw_docs)} unique documents (domain plan)", count=len(raw_docs))
             elif research_brief and research_brief.get("phases"):
-                # Research Director phased collection path
-                raw_docs = await self._run_phased_collection(
+                raw_docs = await run_phased_collection(
                     phases=research_brief["phases"],
                     max_per_source=max_per_source,
                     max_docs=max_docs,
                     mission=mission,
                     aggregator=aggregator,
-                    authenticated_only=authenticated_only,
-                    public_only=public_only,
-                    credentials_path=credentials_path,
+                    config=self._config,
+                    emit_fn=self._emit,
+                    log=self._log,
                 )
                 raw_store.save(raw_docs)
-
             else:
                 enabled_sources = collection_cfg.get("sources", {}).get("enabled", ["web", "pdf", "academic"])
-                await self._emit("collect", f"Starting collectors: {enabled_sources}")
-
-                collector_tasks = await self._run_collectors(
+                raw_docs = await run_collection_phase(
                     queries=queries,
                     enabled_sources=enabled_sources,
                     max_per_source=max_per_source,
+                    max_docs=max_docs,
                     mission=mission,
-                    authenticated_only=authenticated_only,
-                    public_only=public_only,
-                    credentials_path=credentials_path,
+                    aggregator=aggregator,
+                    config=self._config,
+                    emit_fn=self._emit,
+                    log=self._log,
                 )
-
-                all_batches = await asyncio.gather(*collector_tasks, return_exceptions=True)
-                batches: list[list[dict]] = []
-                for b in all_batches:
-                    if isinstance(b, Exception):
-                        self._log.warning("Collector task failed: %s", _scrub(str(b)))
-                    elif b:
-                        batches.append(b)
-
-                llm_cfg = mission.get("llm_sources", {})
-                if llm_cfg.get("enabled", False) and not authenticated_only:
-                    llm_docs = await self._run_llm_sources(mission, queries)
-                    if llm_docs:
-                        batches.append(llm_docs)
-                        await self._emit("llm_sources", f"LLM sources: {len(llm_docs)} documents")
-
-                raw_docs = await aggregator.aggregate(batches)
-
                 if self._config.semantic_dedup_enabled:
-                    raw_docs = await self._semantic_dedup(raw_docs)
+                    try:
+                        from aria.engine.intelligence.semantic_dedup import SemanticDeduplicator
+                        dedup = SemanticDeduplicator()
+                        raw_docs, removed = dedup.filter_documents(raw_docs)
+                        if removed:
+                            await self._emit("dedup", f"Semantic dedup removed {removed} duplicate documents")
+                    except Exception as exc:
+                        self._log.debug("Semantic dedup failed: %s", exc)
 
-                raw_docs = raw_docs[:max_docs]
+                # ── Web link crawl (configurable depth) ───────────────────────
+                if self._config.link_crawl_enabled and raw_docs:
+                    try:
+                        from aria.engine.collectors.web.link_crawler import crawl_links
+                        seen: set[str] = {d.get("url", "") for d in raw_docs}
+
+                        # Depth-1: follow links from search results
+                        link_docs = await crawl_links(
+                            raw_docs,
+                            max_per_doc=self._config.link_crawl_max_per_doc,
+                            max_total=self._config.link_crawl_max_total,
+                            seen_urls=seen,
+                        )
+                        if link_docs:
+                            raw_docs = raw_docs + link_docs
+                            await self._emit(
+                                "link_crawl",
+                                f"Link crawler depth-1: {len(link_docs)} pages",
+                                count=len(link_docs),
+                            )
+
+                        # Depth-2: follow links from depth-1 pages
+                        if link_docs and self._config.link_crawl_depth >= 2:
+                            depth2_max = max(5, self._config.link_crawl_max_total // 2)
+                            depth2_docs = await crawl_links(
+                                link_docs,
+                                max_per_doc=1,        # 1 link per depth-1 page keeps scope manageable
+                                max_total=depth2_max,
+                                seen_urls=seen,       # seen is already updated by depth-1
+                            )
+                            if depth2_docs:
+                                raw_docs = raw_docs + depth2_docs
+                                await self._emit(
+                                    "link_crawl",
+                                    f"Link crawler depth-2: {len(depth2_docs)} pages",
+                                    count=len(depth2_docs),
+                                )
+                    except Exception as exc:
+                        self._log.debug("Link crawl failed: %s", exc)
+
                 raw_store.save(raw_docs)
-                await self._emit("collect_done", f"Collected {len(raw_docs)} unique documents")
 
         source_stats = _count_by_platform(raw_docs)
+        cleaning_cfg = mission.get("cleaning", {})
+        instructions = cleaning_cfg.get("instructions", "Extract key information.")
+        output_schema = cleaning_cfg.get("output_schema", {})
 
-        clean_docs: list[dict] = []
-
+        # ── Cleaning ─────────────────────────────────────────────────────────
         if collect_only:
             await self._emit("skip_clean", "collect_only=True, skipping cleaning")
             clean_docs = raw_docs
         else:
-            cleaning_cfg = mission.get("cleaning", {})
-            instructions = cleaning_cfg.get("instructions", "Extract key information.")
-            output_schema = cleaning_cfg.get("output_schema", {})
+            clean_docs = await run_cleaning_phase(
+                raw_docs, instructions, output_schema, self._config,
+                emit_fn=self._emit, log=self._log,
+            )
 
-            await self._emit("clean", f"Cleaning {len(raw_docs)} documents with LLM...")
-            cleaner = LLMCleaner(config=self._config, logger=self._log)
-            clean_docs = await cleaner.clean_batch(raw_docs, instructions, output_schema)
-            await self._emit("clean_done", f"Cleaned {len(clean_docs)} documents")
+        # ── Citation following ────────────────────────────────────────────────
+        if self._config.citation_following_enabled and clean_docs and not collect_only:
+            try:
+                from aria.engine.citation.agent import CitationAgent
+                agent = CitationAgent(
+                    max_depth=self._config.citation_depth,
+                    max_citations=self._config.citation_max,
+                )
+                enriched = await agent.enrich(clean_docs)
+                n_new = len(enriched) - len(clean_docs)
+                if n_new > 0:
+                    clean_docs = enriched
+                    await self._emit(
+                        "citation_follow",
+                        f"CitationAgent: {n_new} cited papers added (depth={self._config.citation_depth})",
+                        count=n_new,
+                    )
+            except Exception as exc:
+                self._log.debug("CitationAgent failed: %s", exc)
 
+        # ── Score + sort ──────────────────────────────────────────────────────
         await self._emit("score", "Scoring document relevance...")
-        clean_docs = self._score_documents(clean_docs, topic, intent)
-
+        clean_docs = _score_documents(clean_docs, topic, intent, self._log)
         output_cfg = mission.get("output", {})
         sort_by = output_cfg.get("sort_by", "relevance_score")
         sort_order = output_cfg.get("sort_order", "desc")
@@ -383,101 +496,83 @@ class InfoCollectorOrchestrator:
                 key=lambda d: d.get(sort_by, 0) or 0,
                 reverse=(sort_order == "desc"),
             )
-
         clean_store.save(clean_docs)
 
+        # ── Gap detection ─────────────────────────────────────────────────────
         gap_result: dict = {}
-        if (
-            self._config.gap_detection_enabled
-            and not collect_only
-            and clean_docs
-        ):
+        if self._config.gap_detection_enabled and not collect_only and clean_docs:
             await self._emit("gap_detect", "Detecting research gaps...")
-            gap_result = await self._detect_gaps(clean_docs, topic, intent, sub_questions)
+            try:
+                from aria.engine.intelligence.gap_detector import detect_gaps
+                gap_result = await detect_gaps(
+                    docs=clean_docs, topic=topic, intent=intent, sub_questions=sub_questions
+                )
+            except Exception as exc:
+                self._log.debug("Gap detection failed: %s", exc)
 
             if gap_result.get("has_gaps") and gap_result.get("follow_up_queries"):
                 follow_ups = gap_result["follow_up_queries"]
                 await self._emit(
                     "gap_detect",
-                    f"Found {len(gap_result['gaps'])} gaps — running follow-up collection "
-                    f"({len(follow_ups)} queries)",
+                    f"Found {len(gap_result['gaps'])} gaps — running follow-up ({len(follow_ups)} queries)",
                 )
-                extra_docs = await self._gap_followup_collection(
+                extra_docs = await self._run_gap_followup(
                     follow_up_queries=follow_ups,
                     enabled_sources=collection_cfg.get("sources", {}).get("enabled", ["web", "academic"]),
                     max_per_source=max(5, max_per_source // 3),
-                    mission=mission,
                     aggregator=aggregator,
-                    cleaner_cfg=(instructions, output_schema) if not collect_only else ("", {}),
+                    instructions=instructions if not collect_only else "",
+                    output_schema=output_schema if not collect_only else {},
                     topic=topic,
                     intent=intent,
                 )
                 if extra_docs:
                     clean_docs.extend(extra_docs)
-                    # Re-sort
-                    clean_docs = sorted(
-                        clean_docs,
-                        key=lambda d: d.get(sort_by, 0) or 0,
-                        reverse=(sort_order == "desc"),
-                    )
+                    if sort_by:
+                        clean_docs = sorted(
+                            clean_docs,
+                            key=lambda d: d.get(sort_by, 0) or 0,
+                            reverse=(sort_order == "desc"),
+                        )
                     clean_store.save(clean_docs)
                     await self._emit("gap_done", f"Added {len(extra_docs)} docs from gap follow-up")
 
+        # ── Knowledge graph ───────────────────────────────────────────────────
         kg_data: dict = {}
-        if (
-            self._config.knowledge_graph_enabled
-            and not collect_only
-            and clean_docs
-        ):
+        if self._config.knowledge_graph_enabled and not collect_only and clean_docs:
             await self._emit("knowledge_graph", "Building knowledge graph...")
-            kg_data = await self._build_knowledge_graph(clean_docs, topic)
+            try:
+                from aria.engine.intelligence.knowledge_graph import KnowledgeGraph
+                kg = KnowledgeGraph()
+                await kg.build_from_documents(clean_docs, topic, max_docs_to_extract=80)
+                self._log.info(kg.summary())
+                kg_data = kg.to_dict()
+            except Exception as exc:
+                self._log.debug("Knowledge graph failed: %s", exc)
             contradictions = kg_data.get("contradictions", [])
             await self._emit(
                 "knowledge_graph",
-                f"Graph: {kg_data.get('total_entities', 0)} entities, "
-                f"{len(contradictions)} contradictions",
+                f"Graph: {kg_data.get('total_entities', 0)} entities, {len(contradictions)} contradictions",
                 has_contradictions=bool(contradictions),
             )
 
+        # ── Image extraction ──────────────────────────────────────────────────
         images: list[dict] = []
         if self._config.image_extraction_enabled and clean_docs:
-            images = self._extract_images(clean_docs, topic)
+            try:
+                from aria.engine.intelligence.image_extractor import extract_images_from_docs
+                images = extract_images_from_docs(clean_docs, max_total=50, max_per_doc=5)
+            except Exception as exc:
+                self._log.debug("Image extraction failed: %s", exc)
             if images:
                 await self._emit("images", f"Extracted {len(images)} images")
 
+        # ── KB save ───────────────────────────────────────────────────────────
         if kb and clean_docs:
             added, skipped = kb.add_documents_batch(clean_docs, topic=topic, run_id=run_id)
             await self._emit("kb_save", f"KB: saved {added} new docs ({skipped} already known)")
 
-        formats = output_cfg.get("formats", ["json", "csv", "markdown"])
-        await self._emit("export", f"Exporting in formats: {formats}")
-        exporter = Exporter(export_dir)
-        export_paths = exporter.export_all(
-            raw_docs=raw_docs,
-            clean_docs=clean_docs,
-            formats=formats,
-            topic=topic,
-        )
-        if kg_data:
-            try:
-                import json
-                kg_path = export_dir / "knowledge_graph.json"
-                kg_path.write_text(json.dumps(kg_data, indent=2, default=str))
-                export_paths["knowledge_graph"] = str(kg_path)
-            except Exception:
-                pass
-
-        if images:
-            try:
-                import json
-                img_path = export_dir / "images.json"
-                img_path.write_text(json.dumps(images, indent=2, default=str))
-                export_paths["images"] = str(img_path)
-            except Exception:
-                pass
-
-        await self._emit("export_done", "Export complete", paths=export_paths)
-
+        # ── Stats + methodology ───────────────────────────────────────────────
         relevant_count = sum(1 for d in clean_docs if d.get("is_relevant", True))
         stats = {
             "collected": len(raw_docs),
@@ -492,26 +587,26 @@ class InfoCollectorOrchestrator:
             "images_found": len(images),
             "kb_topic_total": kb.stats().get("total_documents", 0) if kb else 0,
         }
-        # ── Build collection methodology record ───────────────────────────
         _pipeline_end = datetime.now(timezone.utc)
         domain_plan = mission.get("_domain_plan")
         _method = "domain_plan" if domain_plan else "standard"
         _domains = list(domain_plan.intent.domains) if domain_plan else collection_cfg.get("domains", [])
         _countries = list(domain_plan.intent.countries) if domain_plan else collection_cfg.get("countries", [])
-        _sources_used = list(domain_plan.active_collectors) if domain_plan else collection_cfg.get("sources", {}).get("enabled", [])
+        _sources_used = (
+            list(domain_plan.active_collectors)
+            if domain_plan
+            else collection_cfg.get("sources", {}).get("enabled", [])
+        )
         _citation_depth = domain_plan.citation_depth if domain_plan else 0
         _citation_docs = sum(1 for d in clean_docs if d.get("is_citation"))
-
         try:
             from aria.engine.ensemble.providers import resolve_cleaning_llm
             _provider, _model, _, _ = resolve_cleaning_llm(None)
         except Exception:
             _provider, _model = "unknown", "unknown"
-
         _dedup_parts = ["URL", "content fingerprint"]
         if self._config.semantic_dedup_enabled:
             _dedup_parts.append("semantic MinHash")
-
         methodology = {
             "collection_method": _method,
             "domains": _domains,
@@ -530,16 +625,21 @@ class InfoCollectorOrchestrator:
             "duration_seconds": (_pipeline_end - _pipeline_start).total_seconds(),
         }
 
-        await self._emit("report", "Generating HTML report...")
-        report_path = generate_report(
-            documents=clean_docs,
+        # ── Export + report ───────────────────────────────────────────────────
+        formats = output_cfg.get("formats", ["json", "csv", "markdown"])
+        export_paths, report_path = await run_export_phase(
+            raw_docs=raw_docs,
+            clean_docs=clean_docs,
             topic=topic,
-            output_dir=export_dir,
+            export_dir=export_dir,
+            formats=formats,
             stats=stats,
-            knowledge_graph=kg_data or None,
-            gap_analysis=gap_result or None,
-            images=images or None,
+            kg_data=kg_data,
+            images=images,
+            gap_result=gap_result,
             methodology=methodology,
+            emit_fn=self._emit,
+            log=self._log,
         )
         await self._emit("done", "Run complete", stats=stats)
 
@@ -548,8 +648,8 @@ class InfoCollectorOrchestrator:
             stats=stats,
             raw_documents=raw_docs,
             clean_documents=clean_docs,
-            export_paths={k: str(v) for k, v in export_paths.items()},
-            report_path=str(report_path),
+            export_paths=export_paths,
+            report_path=report_path,
             knowledge_graph=kg_data,
             gap_analysis=gap_result,
             images=images,
@@ -565,7 +665,6 @@ class InfoCollectorOrchestrator:
                 return await plan_queries(topic, intent)
             except Exception as exc:
                 self._log.debug("Smart query planner failed: %s", exc)
-        # Heuristic fallback — build minimal plan
         return _heuristic_plan(topic, intent)
 
     def _init_kb(self):
@@ -574,798 +673,80 @@ class InfoCollectorOrchestrator:
             return None
         try:
             from aria.engine.knowledge_base.kb import KnowledgeBase
-            kb_path = self._config.kb_path
-            return KnowledgeBase(db_path=kb_path)
+            return KnowledgeBase(db_path=self._config.kb_path)
         except Exception as exc:
             self._log.debug("KB init failed (skipping): %s", exc)
             return None
 
-    async def _semantic_dedup(self, docs: list[dict]) -> list[dict]:
-        """Apply MinHash + embedding semantic deduplication."""
-        try:
-            from aria.engine.intelligence.semantic_dedup import SemanticDeduplicator
-            dedup = SemanticDeduplicator()
-            unique, removed = dedup.filter_documents(docs)
-            if removed:
-                await self._emit("dedup", f"Semantic dedup removed {removed} duplicate documents")
-            return unique
-        except Exception as exc:
-            self._log.debug("Semantic dedup failed (using raw list): %s", exc)
-            return docs
-
-    def _score_documents(
-        self, docs: list[dict], topic: str, intent: str
-    ) -> list[dict]:
-        """Annotate docs with multi-dimensional relevance scores."""
-        try:
-            from aria.engine.intelligence.relevance_scorer import score_and_annotate
-            return score_and_annotate(docs, topic, intent)
-        except Exception as exc:
-            self._log.debug("Relevance scoring failed: %s", exc)
-            return docs
-
-    async def _detect_gaps(
-        self,
-        docs: list[dict],
-        topic: str,
-        intent: str,
-        sub_questions: list[str],
-    ) -> dict:
-        """Run gap detector against collected docs."""
-        try:
-            from aria.engine.intelligence.gap_detector import detect_gaps
-            return await detect_gaps(
-                docs=docs,
-                topic=topic,
-                intent=intent,
-                sub_questions=sub_questions,
-            )
-        except Exception as exc:
-            self._log.debug("Gap detection failed: %s", exc)
-            return {}
-
-    async def _gap_followup_collection(
+    async def _run_gap_followup(
         self,
         follow_up_queries: list[str],
         enabled_sources: list[str],
         max_per_source: int,
-        mission: dict,
         aggregator: ResultAggregator,
-        cleaner_cfg: tuple[str, dict],
+        instructions: str,
+        output_schema: dict,
         topic: str,
         intent: str,
     ) -> list[dict]:
-        """Run a second collection pass with gap follow-up queries."""
-        # Limit sources for follow-up (faster: web + academic only)
+        """Second-pass collection on detected gaps, with optional cleaning."""
         gap_sources = [s for s in enabled_sources if s in ("web", "academic", "news", "pdf")]
         if not gap_sources:
             gap_sources = ["web"]
-
-        tasks = await self._run_collectors(
-            queries=follow_up_queries,
-            enabled_sources=gap_sources,
-            max_per_source=max_per_source,
-            mission=mission,
-            authenticated_only=False,
-            public_only=True,
-            credentials_path=None,
-        )
+        dispatcher = CollectorDispatcher(config=self._config, log=self._log, emit_fn=self._emit)
+        tasks = [
+            asyncio.create_task(dispatcher.dispatch(src, follow_up_queries, max_per_source))
+            for src in gap_sources
+        ]
         all_batches = await asyncio.gather(*tasks, return_exceptions=True)
         batches = [b for b in all_batches if isinstance(b, list) and b]
         extra_raw = await aggregator.aggregate(batches)
-
-        if not extra_raw or not cleaner_cfg[0]:
+        if not extra_raw or not instructions:
             return extra_raw
-
         try:
-            instructions, output_schema = cleaner_cfg
             cleaner = LLMCleaner(config=self._config, logger=self._log)
             extra_clean = await cleaner.clean_batch(extra_raw, instructions, output_schema)
-            return self._score_documents(extra_clean, topic, intent)
+            return _score_documents(extra_clean, topic, intent, self._log)
         except Exception as exc:
             self._log.debug("Gap follow-up cleaning failed: %s", exc)
             return extra_raw
 
-    async def _build_knowledge_graph(
-        self, docs: list[dict], topic: str
-    ) -> dict:
-        """Build knowledge graph from documents."""
-        try:
-            from aria.engine.intelligence.knowledge_graph import KnowledgeGraph
-            kg = KnowledgeGraph()
-            await kg.build_from_documents(docs, topic, max_docs_to_extract=80)
-            self._log.info(kg.summary())
-            return kg.to_dict()
-        except Exception as exc:
-            self._log.debug("Knowledge graph failed: %s", exc)
-            return {}
-
-    def _extract_images(self, docs: list[dict], topic: str) -> list[dict]:
-        """Extract images from collected documents."""
-        try:
-            from aria.engine.intelligence.image_extractor import extract_images_from_docs
-            return extract_images_from_docs(docs, max_total=50, max_per_doc=5)
-        except Exception as exc:
-            self._log.debug("Image extraction failed: %s", exc)
-            return []
-
-    async def _run_phased_collection(
-        self,
-        phases: list[dict],
-        max_per_source: int,
-        max_docs: int,
-        mission: dict,
-        aggregator: "ResultAggregator",
-        authenticated_only: bool,
-        public_only: bool,
-        credentials_path: Optional[str],
-    ) -> list[dict]:
-        """Run phased collection: landscape → deep_dive → critical → latest."""
-        all_docs: list[dict] = []
-        phase_cap = max_docs // max(1, len(phases))  # spread cap across phases
-
-        for phase in phases:
-            name = phase.get("name", "phase")
-            goal = phase.get("goal", "")
-            queries = phase.get("queries", [])
-            source_types = phase.get("source_types", ["web", "academic"])
-            phase_max = phase.get("max_docs", phase_cap)
-
-            await self._emit(
-                "phase_start",
-                f"[{name}] {goal}",
-                phase=name,
-                queries=queries,
-                sources=source_types,
-            )
-
-            if not queries:
-                await self._emit("phase_done", f"[{name}] No queries — skipping", phase=name)
-                continue
-
-            tasks = await self._run_collectors(
-                queries=queries,
-                enabled_sources=source_types,
-                max_per_source=max(5, min(max_per_source, phase_max // max(1, len(source_types)))),
-                mission=mission,
-                authenticated_only=authenticated_only,
-                public_only=public_only,
-                credentials_path=credentials_path,
-            )
-
-            all_batches = await asyncio.gather(*tasks, return_exceptions=True)
-            batches: list[list[dict]] = []
-            for b in all_batches:
-                if isinstance(b, Exception):
-                    self._log.warning("[%s] Collector error: %s", name, _scrub(str(b)))
-                elif b:
-                    batches.append(b)
-
-            phase_docs = await aggregator.aggregate(batches)
-            phase_docs = phase_docs[:phase_max]
-
-            for doc in phase_docs:
-                doc["_phase"] = name  # tag for reporting
-
-            all_docs.extend(phase_docs)
-            await self._emit(
-                "phase_done",
-                f"[{name}] {len(phase_docs)} docs",
-                phase=name,
-                count=len(phase_docs),
-                total_so_far=len(all_docs),
-            )
-
-            if len(all_docs) >= max_docs:
-                break
-
-        await self._emit("collect_done", f"Phased collection: {len(all_docs)} total docs across {len(phases)} phases")
-        return all_docs[:max_docs]
-
     # ------------------------------------------------------------------
-    # Collectors
+    # Thin collector wrappers — delegate to CollectorDispatcher.
+    # These exist so external callers that reference _collect_* methods
+    # by name (e.g. tests, department_runner) continue to work.
     # ------------------------------------------------------------------
 
-    async def _run_collectors(
-        self,
-        queries: list[str],
-        enabled_sources: list[str],
-        max_per_source: int,
-        mission: dict,
-        authenticated_only: bool,
-        public_only: bool,
-        credentials_path: Optional[str],
-    ) -> list[asyncio.Task]:
-        """Build and start collector coroutines for all enabled sources."""
-        tasks = []
+    async def _collect_via_dispatcher(self, source_name: str, queries: list[str], max_per_source: int) -> list[dict]:
+        dispatcher = CollectorDispatcher(config=self._config, log=self._log, emit_fn=self._emit)
+        return await dispatcher.dispatch(source_name, queries, max_per_source)
 
-        source_map = {
-            "web":                self._collect_web,
-            "pdf":                self._collect_pdf,
-            "academic":           self._collect_academic,
-            "youtube":            self._collect_youtube,
-            "reddit":             self._collect_reddit,
-            "hackernews":         self._collect_hackernews,
-            "wikipedia":          self._collect_wikipedia,
-            "stackoverflow":      self._collect_stackoverflow,
-            "medium":             self._collect_medium,
-            "devto":              self._collect_devto,
-            "substack":           self._collect_substack,
-            "rss":                self._collect_rss,
-            "twitter":            self._collect_twitter,
-            "linkedin":           self._collect_linkedin,
-            "slack":              self._collect_slack,
-            "zotero":             self._collect_zotero,
-            "notion":             self._collect_notion,
-            "podcast":            self._collect_podcast,
-            "vimeo":              self._collect_vimeo,
-            "github":             self._collect_github,
-            "government":         self._collect_government,
-            "multilingual":       self._collect_multilingual,
-            "news":               self._collect_news,
-            "academic_platforms": self._collect_academic_platforms,
-            # ARIA 5.0 new collectors
-            "world_bank":         self._collect_world_bank,
-            "un_data":            self._collect_un_data,
-            "who":                self._collect_who,
-            "imf":                self._collect_imf,
-            "fred":               self._collect_fred,
-            "open_alex":          self._collect_open_alex,
-            "gdelt":              self._collect_gdelt,
-            "clinical_trials":    self._collect_clinical_trials,
-            "jobs_boards":        self._collect_jobs_boards,
-            "intl_gov":           self._collect_intl_gov,
-            "sec_edgar":          self._collect_sec_edgar,
-            "eurostat":           self._collect_eurostat,
-        }
+    async def _collect_crossref(self, queries: list[str], max_per_source: int) -> list[dict]:
+        return await self._collect_via_dispatcher("crossref", queries, max_per_source)
 
-        for source_name in enabled_sources:
-            if source_name not in source_map:
-                self._log.debug("Unknown source: %s, skipping", source_name)
-                continue
-            coro = source_map[source_name](queries, max_per_source)
-            tasks.append(asyncio.create_task(coro))
+    async def _collect_core_ac(self, queries: list[str], max_per_source: int) -> list[dict]:
+        return await self._collect_via_dispatcher("core_ac", queries, max_per_source)
 
-        return tasks
+    async def _collect_europe_pmc(self, queries: list[str], max_per_source: int) -> list[dict]:
+        return await self._collect_via_dispatcher("europe_pmc", queries, max_per_source)
 
-    async def _run_llm_sources(self, mission: dict, queries: list[str]) -> list[dict]:
-        from aria.engine.ensemble.agent import LLMEnsembleAgent
-        llm_cfg = mission.get("llm_sources", {})
-        models = llm_cfg.get("models", [])
-        if not models:
-            from aria.engine.ensemble.providers import default_llm_source_models
-            models = default_llm_source_models(self._config)
+    async def _collect_ssrn(self, queries: list[str], max_per_source: int) -> list[dict]:
+        return await self._collect_via_dispatcher("ssrn", queries, max_per_source)
 
-        agent = LLMEnsembleAgent(models=models)
-        return await agent.collect(queries[:3])
+    async def _collect_base_search(self, queries: list[str], max_per_source: int) -> list[dict]:
+        return await self._collect_via_dispatcher("base_search", queries, max_per_source)
 
-    async def _collect_web(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.web.search import WebSearchCollector
-        collector = WebSearchCollector(max_results=max_per_source)
-        docs = []
-        try:
-            async for doc in collector.collect(queries):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("Web collector error: %s", exc)
-        await self._emit("source_done", f"Web search: {len(docs)} docs")
-        return docs
+    async def _collect_wikidata(self, queries: list[str], max_per_source: int) -> list[dict]:
+        return await self._collect_via_dispatcher("wikidata", queries, max_per_source)
 
-    async def _collect_pdf(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.web.pdf import PDFCollector
-        collector = PDFCollector(max_results=max(3, max_per_source // 3))
-        docs = []
-        try:
-            async for doc in collector.collect(queries[:3]):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("PDF collector error: %s", exc)
-        await self._emit("source_done", f"PDF: {len(docs)} docs")
-        return docs
+    async def _collect_internet_archive(self, queries: list[str], max_per_source: int) -> list[dict]:
+        return await self._collect_via_dispatcher("internet_archive", queries, max_per_source)
 
-    async def _collect_academic(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.academic.core import AcademicCollector
-        collector = AcademicCollector(max_per_source=max(5, max_per_source // 3))
-        docs = []
-        try:
-            async for doc in collector.collect(queries[:4]):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("Academic collector error: %s", exc)
-        await self._emit("source_done", f"Academic: {len(docs)} docs")
-        return docs
+    async def _collect_propublica(self, queries: list[str], max_per_source: int) -> list[dict]:
+        return await self._collect_via_dispatcher("propublica", queries, max_per_source)
 
-    async def _collect_youtube(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.media.youtube import YouTubeCollector
-        collector = YouTubeCollector(max_results=max(3, max_per_source // 3))
-        docs = []
-        try:
-            async for doc in collector.collect(queries[:3]):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("YouTube collector error: %s", exc)
-        await self._emit("source_done", f"YouTube: {len(docs)} docs")
-        return docs
-
-    async def _collect_reddit(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.web.reddit import RedditCollector
-        collector = RedditCollector(max_results=max_per_source)
-        docs = []
-        try:
-            async for doc in collector.collect(queries[:3]):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("Reddit collector error: %s", exc)
-        await self._emit("source_done", f"Reddit: {len(docs)} docs")
-        return docs
-
-    async def _collect_hackernews(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.web.hackernews import HackerNewsCollector
-        collector = HackerNewsCollector(max_results=max_per_source)
-        docs = []
-        try:
-            async for doc in collector.collect(queries[:3]):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("HackerNews collector error: %s", exc)
-        await self._emit("source_done", f"HackerNews: {len(docs)} docs")
-        return docs
-
-    async def _collect_wikipedia(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.web.wikipedia import WikipediaCollector
-        collector = WikipediaCollector(max_results=max_per_source)
-        docs = []
-        try:
-            async for doc in collector.collect(queries[:3]):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("Wikipedia collector error: %s", exc)
-        await self._emit("source_done", f"Wikipedia: {len(docs)} docs")
-        return docs
-
-    async def _collect_stackoverflow(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.web.stackoverflow import StackOverflowCollector
-        collector = StackOverflowCollector(max_results=max_per_source)
-        docs = []
-        try:
-            async for doc in collector.collect(queries[:4]):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("StackOverflow collector error: %s", exc)
-        await self._emit("source_done", f"StackOverflow: {len(docs)} docs")
-        return docs
-
-    async def _collect_medium(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.web.medium import MediumCollector
-        collector = MediumCollector(max_results=max_per_source)
-        docs = []
-        try:
-            async for doc in collector.collect(queries[:3]):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("Medium collector error: %s", exc)
-        await self._emit("source_done", f"Medium: {len(docs)} docs")
-        return docs
-
-    async def _collect_devto(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.web.devto import DevToCollector
-        collector = DevToCollector(max_results=max_per_source)
-        docs = []
-        try:
-            async for doc in collector.collect(queries[:4]):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("DevTo collector error: %s", exc)
-        await self._emit("source_done", f"dev.to: {len(docs)} docs")
-        return docs
-
-    async def _collect_substack(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.web.substack import SubstackCollector
-        collector = SubstackCollector(max_results=max_per_source)
-        docs = []
-        try:
-            async for doc in collector.collect(queries):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("Substack collector error: %s", exc)
-        await self._emit("source_done", f"Substack: {len(docs)} docs")
-        return docs
-
-    async def _collect_rss(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.web.rss import RSSCollector
-        collector = RSSCollector(max_results=max_per_source)
-        docs = []
-        try:
-            async for doc in collector.collect(queries):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("RSS collector error: %s", exc)
-        await self._emit("source_done", f"RSS: {len(docs)} docs")
-        return docs
-
-    async def _collect_twitter(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.social.twitter import TwitterCollector
-        collector = TwitterCollector()
-        docs = []
-        try:
-            async for doc in collector.collect(queries[:3]):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("Twitter collector error: %s", exc)
-        await self._emit("source_done", f"Twitter: {len(docs)} docs")
-        return docs
-
-    async def _collect_linkedin(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.social.linkedin import LinkedInCollector
-        collector = LinkedInCollector()
-        docs = []
-        try:
-            async for doc in collector.collect(queries):
-                docs.append(doc)
-        except Exception as exc:
-            self._log.warning("LinkedIn collector error: %s", exc)
-        await self._emit("source_done", f"LinkedIn: {len(docs)} docs")
-        return docs
-
-    async def _collect_slack(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.social.slack import SlackCollector
-        collector = SlackCollector()
-        docs = []
-        try:
-            async for doc in collector.collect(queries):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("Slack collector error: %s", exc)
-        await self._emit("source_done", f"Slack: {len(docs)} docs")
-        return docs
-
-    async def _collect_zotero(self, queries: list[str], max_per_source: int) -> list[dict]:
-        import os
-        from aria.engine.collectors.knowledge.zotero import ZoteroCollector
-        mode = (os.getenv("ZOTERO_MODE") or "").strip().lower()
-        if mode not in {"local", "cloud"}:
-            mode = "cloud" if os.getenv("ZOTERO_API_KEY") else "local"
-        library_type = (os.getenv("ZOTERO_LIBRARY_TYPE") or "user").strip().lower()
-        if library_type not in {"user", "group"}:
-            library_type = "user"
-        collector = ZoteroCollector(
-            mode=mode,
-            library_id=os.getenv("ZOTERO_LIBRARY_ID") or None,
-            api_key=os.getenv("ZOTERO_API_KEY") or None,
-            library_type=library_type,
-            max_items=max_per_source,
-        )
-        docs = []
-        try:
-            async for doc in collector.collect(queries):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("Zotero collector error: %s", exc)
-        await self._emit("source_done", f"Zotero: {len(docs)} docs ({mode})")
-        return docs
-
-    async def _collect_notion(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.knowledge.notion import NotionCollector
-        collector = NotionCollector()
-        docs = []
-        try:
-            async for doc in collector.collect(queries):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("Notion collector error: %s", exc)
-        await self._emit("source_done", f"Notion: {len(docs)} docs")
-        return docs
-
-    async def _collect_podcast(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.media.podcast import PodcastCollector
-        collector = PodcastCollector(max_results=max_per_source)
-        docs = []
-        try:
-            async for doc in collector.collect(queries):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("Podcast collector error: %s", exc)
-        await self._emit("source_done", f"Podcast: {len(docs)} docs")
-        return docs
-
-    async def _collect_vimeo(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.media.vimeo import VimeoCollector
-        collector = VimeoCollector()
-        docs = []
-        try:
-            async for doc in collector.collect(queries[:3]):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("Vimeo collector error: %s", exc)
-        await self._emit("source_done", f"Vimeo: {len(docs)} docs")
-        return docs
-
-    async def _collect_github(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.knowledge.github import GitHubCollector
-        collector = GitHubCollector(max_results=max_per_source)
-        docs = []
-        try:
-            async for doc in collector.collect(queries[:4]):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("GitHub collector error: %s", exc)
-        await self._emit("source_done", f"GitHub: {len(docs)} docs")
-        return docs
-
-    async def _collect_government(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.specialized.government import GovernmentCollector
-        collector = GovernmentCollector(max_results=max_per_source)
-        docs = []
-        try:
-            async for doc in collector.collect(queries[:4]):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("Government collector error: %s", exc)
-        await self._emit("source_done", f"Government: {len(docs)} docs")
-        return docs
-
-    async def _collect_multilingual(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.specialized.multilingual import MultilingualCollector
-        collector = MultilingualCollector(max_results=max_per_source)
-        docs = []
-        try:
-            async for doc in collector.collect(queries[:3]):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("Multilingual collector error: %s", exc)
-        await self._emit("source_done", f"Multilingual: {len(docs)} docs")
-        return docs
-
-    async def _collect_news(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.specialized.news import NewsCollector
-        collector = NewsCollector(max_results=max_per_source)
-        docs = []
-        try:
-            async for doc in collector.collect(queries[:4]):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("News collector error: %s", exc)
-        await self._emit("source_done", f"News: {len(docs)} docs")
-        return docs
-
-    async def _collect_academic_platforms(
-        self, queries: list[str], max_per_source: int
-    ) -> list[dict]:
-        from aria.engine.collectors.academic.core_platforms import AcademicPlatformsCollector
-        collector = AcademicPlatformsCollector(max_results=max_per_source)
-        if not await collector.validate():
-            self._log.info(
-                "AcademicPlatforms: no credentials set, skipping "
-                "(set IEEE_API_KEY, ELSEVIER_API_KEY, SPRINGER_API_KEY, "
-                "JSTOR_SESSION_COOKIE, or ACM_SESSION_COOKIE)"
-            )
-            return []
-        docs = []
-        try:
-            async for doc in collector.collect(queries[:4]):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("AcademicPlatforms collector error: %s", exc)
-        await self._emit("source_done", f"AcademicPlatforms: {len(docs)} docs")
-        return docs
-
-    # ------------------------------------------------------------------
-    # ARIA 5.0 new collectors
-    # ------------------------------------------------------------------
-
-    async def _collect_world_bank(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.data.world_bank import WorldBankCollector
-        collector = WorldBankCollector(max_results=max_per_source)
-        docs = []
-        try:
-            async for doc in collector.collect(queries[:4]):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("WorldBank collector error: %s", exc)
-        await self._emit("source_done", f"World Bank: {len(docs)} docs")
-        return docs
-
-    async def _collect_un_data(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.data.un_data import UNDataCollector
-        collector = UNDataCollector(max_results=max_per_source)
-        docs = []
-        try:
-            async for doc in collector.collect(queries[:4]):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("UN Data collector error: %s", exc)
-        await self._emit("source_done", f"UN Data: {len(docs)} docs")
-        return docs
-
-    async def _collect_who(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.data.who import WHOCollector
-        collector = WHOCollector(max_results=max_per_source)
-        docs = []
-        try:
-            async for doc in collector.collect(queries[:4]):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("WHO collector error: %s", exc)
-        await self._emit("source_done", f"WHO: {len(docs)} docs")
-        return docs
-
-    async def _collect_imf(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.data.imf import IMFCollector
-        collector = IMFCollector(max_results=max_per_source)
-        docs = []
-        try:
-            async for doc in collector.collect(queries[:3]):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("IMF collector error: %s", exc)
-        await self._emit("source_done", f"IMF: {len(docs)} docs")
-        return docs
-
-    async def _collect_fred(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.data.fred import FREDCollector
-        collector = FREDCollector(max_results=max_per_source)
-        docs = []
-        try:
-            async for doc in collector.collect(queries[:3]):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("FRED collector error: %s", exc)
-        await self._emit("source_done", f"FRED: {len(docs)} docs")
-        return docs
-
-    async def _collect_open_alex(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.academic.open_alex import OpenAlexCollector
-        collector = OpenAlexCollector(max_results=max_per_source)
-        docs = []
-        try:
-            async for doc in collector.collect(queries[:5]):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("OpenAlex collector error: %s", exc)
-        await self._emit("source_done", f"OpenAlex: {len(docs)} docs")
-        return docs
-
-    async def _collect_gdelt(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.data.gdelt import GDELTCollector
-        collector = GDELTCollector(max_results=max_per_source)
-        docs = []
-        try:
-            async for doc in collector.collect(queries[:4]):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("GDELT collector error: %s", exc)
-        await self._emit("source_done", f"GDELT: {len(docs)} docs")
-        return docs
-
-    async def _collect_clinical_trials(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.data.clinical_trials import ClinicalTrialsCollector
-        collector = ClinicalTrialsCollector(max_results=max_per_source)
-        docs = []
-        try:
-            async for doc in collector.collect(queries[:4]):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("ClinicalTrials collector error: %s", exc)
-        await self._emit("source_done", f"ClinicalTrials: {len(docs)} docs")
-        return docs
-
-    async def _collect_jobs_boards(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.specialized.jobs_boards import JobsBoardsCollector
-        collector = JobsBoardsCollector(max_results=max_per_source)
-        docs = []
-        try:
-            async for doc in collector.collect(queries[:4]):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("JobsBoards collector error: %s", exc)
-        await self._emit("source_done", f"Jobs Boards: {len(docs)} docs")
-        return docs
-
-    async def _collect_intl_gov(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.specialized.intl_gov import IntlGovCollector
-        collector = IntlGovCollector(max_results=max_per_source)
-        docs = []
-        try:
-            async for doc in collector.collect(queries[:4]):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("IntlGov collector error: %s", exc)
-        await self._emit("source_done", f"IntlGov: {len(docs)} docs")
-        return docs
-
-    async def _collect_sec_edgar(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.data.sec_edgar import SECEdgarCollector
-        collector = SECEdgarCollector(max_results=max_per_source)
-        docs = []
-        try:
-            async for doc in collector.collect(queries[:3]):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("SEC EDGAR collector error: %s", exc)
-        await self._emit("source_done", f"SEC EDGAR: {len(docs)} docs")
-        return docs
-
-    async def _collect_eurostat(self, queries: list[str], max_per_source: int) -> list[dict]:
-        from aria.engine.collectors.data.eurostat import EurostatCollector
-        collector = EurostatCollector(max_results=max_per_source)
-        docs = []
-        try:
-            async for doc in collector.collect(queries[:3]):
-                docs.append(doc)
-                if len(docs) >= max_per_source:
-                    break
-        except Exception as exc:
-            self._log.warning("Eurostat collector error: %s", exc)
-        await self._emit("source_done", f"Eurostat: {len(docs)} docs")
-        return docs
+    async def _collect_mastodon(self, queries: list[str], max_per_source: int) -> list[dict]:
+        return await self._collect_via_dispatcher("mastodon", queries, max_per_source)
 
     async def _emit(self, stage: str, message: str, **data: Any) -> None:
         self._log.info("[%s] %s", stage, message)
@@ -1379,12 +760,6 @@ class InfoCollectorOrchestrator:
                 self._log.debug("Event callback error: %s", exc)
 
 
-def _content_fingerprint(text: str) -> str:
-    sample = text.strip()[:500]
-    combined = f"{len(text)}:{sample}"
-    return hashlib.sha256(combined.encode()).hexdigest()
-
-
 def _count_by_platform(docs: list[dict]) -> dict[str, int]:
     counts: dict[str, int] = {}
     for doc in docs:
@@ -1393,45 +768,9 @@ def _count_by_platform(docs: list[dict]) -> dict[str, int]:
     return counts
 
 
-def _heuristic_plan(topic: str, intent: str) -> dict:
-    """Minimal query plan without LLM."""
-    t = topic.strip()
-    year = datetime.now().year
-    return {
-        "sub_questions": [
-            f"What is {t} and how does it work?",
-            f"What are the main applications of {t}?",
-            f"What are recent advances in {t} ({year})?",
-            f"What are the limitations and challenges of {t}?",
-            f"What does the research say about {t}?",
-        ],
-        "queries": {
-            "general": [t, f"{t} explained", f"{t} overview", f"what is {t}"],
-            "academic": [f"{t} research {year}", f"{t} study", f"{t} systematic review"],
-            "technical": [f"{t} implementation", f"{t} architecture"],
-            "news": [f"{t} news {year}", f"{t} latest"],
-            "critical": [f"{t} limitations", f"{t} risks"],
-            "policy": [f"{t} policy regulation"],
-        },
-        "source_priorities": {
-            "academic": 9, "web": 8, "news": 7, "github": 6,
-            "government": 5, "youtube": 4, "reddit": 3,
-        },
-        "entity_seeds": [],
-    }
+# Re-exported from phase modules for backwards compatibility
+# _heuristic_plan, _flatten_plan_queries → planning.py
+# _content_fingerprint → dedup.py
 
-
-def _flatten_plan_queries(plan: dict, max_total: int = 20) -> list[str]:
-    """Flatten plan queries dict → deduplicated list."""
-    order = ["general", "academic", "technical", "news", "critical", "policy"]
-    seen: set[str] = set()
-    result: list[str] = []
-    for category in order:
-        for q in plan.get("queries", {}).get(category, []):
-            q = q.strip()
-            if q and q.lower() not in seen:
-                seen.add(q.lower())
-                result.append(q)
-                if len(result) >= max_total:
-                    return result
-    return result
+# Alias so `from aria.engine.orchestrator.core import MasterOrchestrator` works
+MasterOrchestrator = InfoCollectorOrchestrator

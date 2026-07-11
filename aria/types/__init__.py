@@ -4,12 +4,14 @@ Central location for all Pydantic models, TypedDicts, and type hints
 used across the ARIA pipeline.
 """
 
+from aria.types.credentials import CredentialScope
 from aria.types.document import Document, RawDocument, CleanDocument
 from aria.types.run import Run, RunStatus
 from aria.types.mission import Mission, MissionConfig
 from aria.types.source import SourceMetadata
 
 __all__ = [
+    "CredentialScope",
     "Document",
     "RawDocument",
     "CleanDocument",

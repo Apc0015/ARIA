@@ -10,12 +10,12 @@ playwright install chromium
 python -m aria.cli --serve-api   # start the API backend
 ```
 
-Then open the Flutter UI:
+Then open the React UI:
 
 ```bash
-cd aria_studio
-flutter pub get
-flutter run -d macos
+cd aria-report
+npm install
+npm run dev
 ```
 
 Or run headless from the CLI:
@@ -33,7 +33,7 @@ python -m aria.cli --topic "AI safety benchmarks 2025" --mission missions/exampl
 5. **Deduplication** — URL-hash + content-fingerprint dedup before any document is stored
 6. **Smart Cleaning** — one LLM call per document: detects content type (10 categories), applies the matching extraction strategy, scores relevance 0–1 against your research goal
 7. **Export** — JSON, CSV, Markdown, HTML report — all sortable by relevance score
-8. **Download** — 6 one-click formats from the Flutter UI including raw data and a full ZIP bundle
+8. **Download** — 6 one-click formats from the React UI including raw data and a full ZIP bundle
 
 ## Sources
 
@@ -243,7 +243,7 @@ infocollector/           Compatibility layer (existing implementation)
   access/                Credential, session, paywall management
 missions/examples/       Mission YAML templates
 credentials/             Gitignored credential storage
-aria_studio/             Flutter desktop/web UI
+aria-report/             React web UI
 Doc/                     Diagrams and HTML reports
 tests/                   Python test suite
 ```
@@ -260,8 +260,14 @@ python -m aria.cli --topic "transformer attention mechanisms"
 # Start the API server
 python -m aria.cli --serve-api
 
-# Clean-only pass over existing raw data
-python -m aria.cli --clean-only --raw-dir runs/my-run/raw_data
+# Collection-only pass: gather raw data, skip cleaning
+python -m aria.cli --mission missions/examples/default.yaml --collect-only --run-id my-run
+
+# Cleaning-only pass: clean the raw data from the same run
+python -m aria.cli --mission missions/examples/default.yaml --clean-only --run-id my-run
+
+# Cleaning-only pass over an explicit raw data directory
+python -m aria.cli --mission missions/examples/default.yaml --clean-only --raw-dir data/runs/my-run/raw
 
 # Resume an interrupted run
 python -m aria.cli --mission missions/examples/default.yaml --resume

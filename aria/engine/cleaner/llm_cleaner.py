@@ -8,6 +8,14 @@ import logging
 import re
 from typing import Any, Optional
 
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+    before_sleep_log,
+)
+
 from aria.engine.ensemble.providers import resolve_cleaning_llm
 
 logger = logging.getLogger("aria")
@@ -97,24 +105,36 @@ class LLMCleaner:
         instructions: str,
         output_schema: dict,
         concurrency: int = 5,
+        on_progress: Optional[Any] = None,
     ) -> list[dict]:
         """Clean a batch of documents with bounded concurrency.
 
         Args:
-            docs: List of raw document dicts.
+            docs:         List of raw document dicts.
             instructions: Cleaning instructions from the mission.
             output_schema: Output schema dict.
-            concurrency: Max parallel LLM calls.
+            concurrency:  Max parallel LLM calls.
+            on_progress:  Optional async callable(completed: int, total: int)
+                          called after each document finishes cleaning.
 
         Returns:
-            List of cleaned document dicts.
+            List of cleaned document dicts in the same order as input.
         """
         sem = asyncio.Semaphore(concurrency)
+        total = len(docs)
+        completed = 0
 
         async def _clean_one(doc: dict) -> dict:
+            nonlocal completed
             async with sem:
                 result = await self.clean_document(doc, instructions, output_schema)
-                await asyncio.sleep(0.1)  # small backoff
+                await asyncio.sleep(0.1)  # small backoff between calls
+                completed += 1
+                if on_progress:
+                    try:
+                        await on_progress(completed, total)
+                    except Exception:
+                        pass
                 return result
 
         tasks = [_clean_one(d) for d in docs]
@@ -141,6 +161,31 @@ class LLMCleaner:
             )
 
 
+class _LLMRateLimitError(Exception):
+    """Raised when the LLM provider returns a rate-limit response (429/529)."""
+
+
+class _LLMTransientError(Exception):
+    """Raised on transient server errors (500/502/503/504) worth retrying."""
+
+
+def _classify_openai_error(exc: Exception) -> Exception:
+    """Re-raise as a typed error so tenacity can target retries correctly."""
+    msg = str(exc).lower()
+    if "429" in msg or "rate limit" in msg or "too many requests" in msg:
+        raise _LLMRateLimitError(str(exc)) from exc
+    if any(c in msg for c in ("500", "502", "503", "504", "timeout", "connection")):
+        raise _LLMTransientError(str(exc)) from exc
+    raise exc
+
+
+@retry(
+    retry=retry_if_exception_type((_LLMRateLimitError, _LLMTransientError)),
+    wait=wait_exponential(multiplier=1, min=2, max=30),
+    stop=stop_after_attempt(4),
+    before_sleep=before_sleep_log(logger, logging.DEBUG),
+    reraise=False,
+)
 async def _call_openai_compat(
     prompt: str,
     model_id: str,
@@ -158,18 +203,7 @@ async def _call_openai_compat(
 
     client = AsyncOpenAI(**kwargs)
     try:
-        resp = await client.chat.completions.create(
-            model=model_id,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": prompt},
-            ],
-            max_tokens=max_tokens,
-            temperature=temperature,
-            response_format={"type": "json_object"},
-        )
-        return resp.choices[0].message.content if resp.choices else None
-    except Exception as exc:
+        # Try with json_object response format first (not all providers support it)
         try:
             resp = await client.chat.completions.create(
                 model=model_id,
@@ -179,15 +213,36 @@ async def _call_openai_compat(
                 ],
                 max_tokens=max_tokens,
                 temperature=temperature,
+                response_format={"type": "json_object"},
             )
-            return resp.choices[0].message.content if resp.choices else None
-        except Exception as exc2:
-            logger.debug("OpenAI-compat call failed: %s", exc2)
-            return None
+        except Exception as exc:
+            _classify_openai_error(exc)
+            resp = await client.chat.completions.create(
+                model=model_id,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+        return resp.choices[0].message.content if resp.choices else None
+    except (_LLMRateLimitError, _LLMTransientError):
+        raise  # let tenacity handle these
+    except Exception as exc:
+        logger.debug("OpenAI-compat call failed: %s", exc)
+        return None
     finally:
         await client.close()
 
 
+@retry(
+    retry=retry_if_exception_type((_LLMRateLimitError, _LLMTransientError)),
+    wait=wait_exponential(multiplier=1, min=2, max=30),
+    stop=stop_after_attempt(4),
+    before_sleep=before_sleep_log(logger, logging.DEBUG),
+    reraise=False,
+)
 async def _call_anthropic(
     prompt: str,
     model_id: str,
@@ -209,6 +264,11 @@ async def _call_anthropic(
         )
         return resp.content[0].text if resp.content else None
     except Exception as exc:
+        msg = str(exc).lower()
+        if "529" in msg or "overloaded" in msg or "rate" in msg:
+            raise _LLMRateLimitError(str(exc)) from exc
+        if any(c in msg for c in ("500", "502", "503", "504", "timeout")):
+            raise _LLMTransientError(str(exc)) from exc
         logger.debug("Anthropic call failed: %s", exc)
         return None
     finally:
@@ -248,16 +308,18 @@ OUTPUT SCHEMA (extract these fields):
 ADDITIONAL REQUIRED FIELDS (always include):
 - content_type: one of [{content_types_str}]
 - relevance_score: float 0.0-1.0 (how relevant to the research goal)
+- relevance_reasoning: one sentence explaining WHY this score was given (e.g. "Directly reports empirical findings on X" or "Only tangentially mentions X in passing")
 - is_relevant: bool (true if relevance_score >= 0.5)
 - summary: 2-4 sentence summary of the document's main findings
 
 INSTRUCTIONS:
 1. Classify the content_type from the list above
 2. Score relevance 0.0-1.0 against the research goal/instructions
-3. Extract all fields from the output schema (use null for missing fields)
-4. Write a concise summary
+3. Write ONE sentence explaining the relevance score in relevance_reasoning
+4. Extract all fields from the output schema (use null for missing fields)
+5. Write a concise summary
 
-Respond with a single valid JSON object containing all schema fields plus content_type, relevance_score, is_relevant, and summary."""
+Respond with a single valid JSON object containing all schema fields plus content_type, relevance_score, relevance_reasoning, is_relevant, and summary."""
 
     return prompt
 
@@ -293,12 +355,20 @@ def _parse_llm_json(text: str) -> Optional[dict]:
 def _merge_doc_with_extraction(doc: dict, extracted: dict, output_schema: dict) -> dict:
     result = dict(doc)
 
+    # System fields are computed with explicit defaults and must not be
+    # overwritten by the generic schema loop below (which may carry None values).
+    _SYSTEM_FIELDS = {"content_type", "relevance_score", "relevance_reasoning", "is_relevant", "summary"}
+
     result["content_type"] = extracted.get("content_type", "unknown")
-    result["relevance_score"] = float(extracted.get("relevance_score") or 0.5)
+    _score = extracted.get("relevance_score")
+    result["relevance_score"] = float(_score if _score is not None else 0.5)
+    result["relevance_reasoning"] = extracted.get("relevance_reasoning", "")
     result["is_relevant"] = bool(extracted.get("is_relevant", result["relevance_score"] >= 0.5))
     result["summary"] = extracted.get("summary", "")
 
     for key in output_schema:
+        if key in _SYSTEM_FIELDS:
+            continue  # already set above with proper defaults
         if key in extracted:
             result[key] = extracted[key]
         elif key not in result:
@@ -332,13 +402,18 @@ def _default_for_schema_type(type_hint: Any) -> Any:
 
 
 def _fallback_clean(doc: dict, output_schema: dict) -> dict:
-    """Return a basic cleaned doc when LLM is unavailable."""
+    """Return a basic cleaned doc when LLM is unavailable.
+
+    Documents are marked not relevant (score=0.0, is_relevant=False) and
+    flagged with a quality_warning so callers know scoring did not run.
+    """
     result = dict(doc)
     result["content_type"] = "unknown"
-    result["relevance_score"] = 0.5
-    result["is_relevant"] = True
+    result["relevance_score"] = 0.0
+    result["is_relevant"] = False
     result["summary"] = doc.get("text", "")[:300]
     result["cleaned"] = False
+    result["quality_warning"] = "LLM unavailable — document not scored"
 
     for key, type_hint in output_schema.items():
         if key not in result:

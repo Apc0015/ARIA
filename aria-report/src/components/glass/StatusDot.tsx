@@ -7,6 +7,7 @@ interface StatusDotProps {
 }
 
 const statusConfig: Record<RunStatus, { color: string; glow: string; animate: boolean }> = {
+  queued: { color: "bg-aria-text4", glow: "", animate: false },
   running: { color: "bg-aria-accent", glow: "status-glow-violet", animate: true },
   pending: { color: "bg-aria-text4", glow: "", animate: false },
   completed: { color: "bg-aria-success", glow: "status-glow-green", animate: false },

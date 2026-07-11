@@ -16,6 +16,11 @@ class RawStore:
         self._base_dir.mkdir(parents=True, exist_ok=True)
         self._path = self._base_dir / self.FILENAME
 
+    @property
+    def path(self) -> Path:
+        """Location of the JSONL file backing this store."""
+        return self._path
+
     def save(self, documents: list[dict]) -> Path:
         """Atomically save documents to a JSONL file.
 

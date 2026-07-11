@@ -20,7 +20,8 @@ def build_parser() -> argparse.ArgumentParser:
             "  aria --serve-api\n"
             "  aria --topic 'quantum computing' --output-dir ./results\n"
             "  aria --mission missions/research.yaml\n"
-            "  aria --mission missions/research.yaml --clean-only --raw-dir ./data/raw\n"
+            "  aria --mission missions/research.yaml --collect-only --run-id my-run\n"
+            "  aria --mission missions/research.yaml --clean-only --run-id my-run\n"
             "  aria --validate-credentials\n"
         ),
     )
@@ -52,16 +53,28 @@ def build_parser() -> argparse.ArgumentParser:
 
     # ── Run flags ──────────────────────────────────────────────────────────
     flags_group = parser.add_argument_group("run flags")
-    flags_group.add_argument(
+    phase_group = flags_group.add_mutually_exclusive_group()
+    phase_group.add_argument(
+        "--collect-only",
+        action="store_true",
+        help="Run collection only; save raw data and skip cleaning/enrichment.",
+    )
+    phase_group.add_argument(
         "--clean-only",
         action="store_true",
-        help="Skip collection; clean existing raw data only.",
+        help="Run cleaning only; requires existing raw data.",
     )
     flags_group.add_argument(
         "--raw-dir",
         type=str,
         metavar="DIR",
         help="Path to existing raw data directory (used with --clean-only).",
+    )
+    flags_group.add_argument(
+        "--run-id",
+        type=str,
+        metavar="ID",
+        help="Use a specific run ID so collection and cleaning can target the same run.",
     )
     flags_group.add_argument(
         "--resume",
@@ -133,18 +146,15 @@ def _run_research(args: argparse.Namespace) -> int:
     # Fall back to standard orchestrator
     if MasterOrchestrator is None:
         try:
-            from aria.orchestrators.master import MasterOrchestrator  # type: ignore[assignment]
-        except ImportError:
-            try:
-                from aria.orchestrator.master import MasterOrchestrator  # type: ignore[assignment]
-            except ImportError as exc:
-                print(
-                    f"[aria] Error: backend (aria.engine) is not installed.\n"
-                    f"       Run: pip install aria.engine\n"
-                    f"       Details: {exc}",
-                    file=sys.stderr,
-                )
-                return 1
+            from aria.orchestrator.master import MasterOrchestrator  # type: ignore[assignment]
+        except ImportError as exc:
+            print(
+                f"[aria] Error: backend (aria.engine) is not installed.\n"
+                f"       Run: pip install aria.engine\n"
+                f"       Details: {exc}",
+                file=sys.stderr,
+            )
+            return 1
 
     output_dir = Path(args.output_dir) if args.output_dir else None
     config = load_config(output_dir=output_dir)
@@ -182,13 +192,14 @@ def _run_research(args: argparse.Namespace) -> int:
     async def _run():
         return await orchestrator.run(
             mission,
-            collect_only=False,
+            collect_only=bool(args.collect_only),
             clean_only=bool(args.clean_only),
             validate_credentials=bool(args.validate_credentials),
             authenticated_only=False,
             public_only=False,
             resume=bool(args.resume),
             credentials_path=str(config.credentials_file),
+            run_id=args.run_id,
             **({"raw_dir": str(raw_dir)} if raw_dir else {}),
         )
 

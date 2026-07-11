@@ -1,4 +1,4 @@
-"""Per-key rate limiting for ARIA Studio API."""
+"""Per-key rate limiting for ARIA API."""
 from __future__ import annotations
 
 import asyncio as _asyncio

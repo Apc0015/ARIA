@@ -1,4 +1,4 @@
-"""Simple static API key authentication for ARIA Studio API."""
+"""Simple static API key authentication for ARIA API routes."""
 from __future__ import annotations
 
 import os
@@ -20,7 +20,7 @@ if not _API_KEY:
 
 # Paths exempt from auth (health check, static assets, CORS preflight)
 _PUBLIC_PREFIXES = ("/assets", "/favicon")
-_PUBLIC_EXACT = {"/api/health", "/", ""}
+_PUBLIC_EXACT = {"/api/health", "/api/auth/key", "/", ""}
 
 
 class ApiKeyMiddleware(BaseHTTPMiddleware):
@@ -34,6 +34,8 @@ class ApiKeyMiddleware(BaseHTTPMiddleware):
         path = request.url.path
 
         # Exempt public paths
+        if not path.startswith("/api/"):
+            return await call_next(request)
         if path in _PUBLIC_EXACT:
             return await call_next(request)
         if any(path.startswith(p) for p in _PUBLIC_PREFIXES):

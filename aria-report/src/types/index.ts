@@ -1,4 +1,4 @@
-export type RunStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
+export type RunStatus = "queued" | "pending" | "running" | "completed" | "failed" | "cancelled";
 
 export interface Run {
   run_id: string;
@@ -51,6 +51,12 @@ export interface StartRunPayload {
   mission_yaml?: string;
   ensemble_models?: string[];
   flags?: Record<string, unknown>;
+  // Seed paper fields (citation crawl)
+  seed_doi?: string;
+  seed_url?: string;
+  max_refs?: number;
+  // Research Director session
+  director_session_id?: string;
 }
 
 export interface Credentials {

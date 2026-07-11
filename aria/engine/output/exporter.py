@@ -197,10 +197,19 @@ class Exporter:
         """
         zip_path = self._output_dir / "research_export.zip"
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            seen_paths: set[Path] = set()
+            seen_arcnames: set[str] = set()
             for name, file_path in export_paths.items():
-                p = Path(file_path)
-                if p.exists():
-                    zf.write(p, arcname=p.name)
+                p = Path(file_path).resolve()
+                if not p.exists() or p in seen_paths:
+                    continue
+                arcname = p.name
+                # Disambiguate if two different files share the same basename
+                if arcname in seen_arcnames:
+                    arcname = f"{name}_{arcname}"
+                seen_paths.add(p)
+                seen_arcnames.add(arcname)
+                zf.write(p, arcname=arcname)
         return zip_path
 
     def export_all(

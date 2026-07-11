@@ -32,7 +32,7 @@ _ALL_SOURCES = [
     # Academic
     "arxiv", "pubmed", "semantic_scholar", "zotero",
     # Social
-    "twitter", "linkedin", "slack",
+    "twitter", "slack",
     # Media
     "youtube", "vimeo", "podcast",
     # Data

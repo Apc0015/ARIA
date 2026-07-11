@@ -162,17 +162,25 @@ class KnowledgeGraph:
         if not response:
             return None
 
-        match = re.search(r"\{.*\}", response, re.DOTALL)
-        if not match:
+        result = _parse_extraction(response)
+
+        # Fallback: simpler prompt if JSON parsing failed entirely
+        if result is None:
+            simple_prompt = _SIMPLE_EXTRACT_PROMPT.format(
+                title=doc.get("title", "")[:100],
+                text=text[:800],
+            )
+            response2 = await _call_llm(simple_prompt, _EXTRACT_SYSTEM, max_tokens=400)
+            if response2:
+                result = _parse_simple_extraction(response2)
+
+        if result is None:
             return None
-        try:
-            result = json.loads(match.group(0))
-            result["_source_url"] = doc.get("url", "")
-            result["_source_title"] = doc.get("title", "")
-            result["_platform"] = doc.get("platform", "")
-            return result
-        except (json.JSONDecodeError, ValueError):
-            return None
+
+        result["_source_url"]   = doc.get("url", "")
+        result["_source_title"] = doc.get("title", "")
+        result["_platform"]     = doc.get("platform", "")
+        return result
 
     def _merge_entities(self, extraction: dict[str, Any], doc: dict[str, Any]) -> None:
         """Merge extracted entities into global entity store."""
@@ -274,17 +282,13 @@ class KnowledgeGraph:
 
             response = await _call_llm(prompt, "You are a fact-checker. Respond with JSON only.", max_tokens=600)
             if response:
-                match = re.search(r"\{.*\}", response, re.DOTALL)
-                if match:
-                    try:
-                        result = json.loads(match.group(0))
-                        contradictions = result.get("contradictions", [])
-                        if contradictions:
-                            for c in contradictions:
-                                c["subject"] = subject
-                            self._contradictions.extend(contradictions)
-                    except (json.JSONDecodeError, ValueError):
-                        pass
+                result = _parse_extraction(response)
+                if result:
+                    contradictions = result.get("contradictions", [])
+                    if contradictions:
+                        for c in contradictions:
+                            c["subject"] = subject
+                        self._contradictions.extend(contradictions)
             checked += 1
 
     # ─── Export ──────────────────────────────────────────────────────────────
@@ -344,27 +348,161 @@ class KnowledgeGraph:
         return "\n".join(lines)
 
 
-async def _call_llm(prompt: str, system: str, max_tokens: int = 800) -> Optional[str]:
-    ant_key = os.getenv("ANTHROPIC_API_KEY")
-    or_key = os.getenv("OPENROUTER_API_KEY")
-    oai_key = os.getenv("OPENAI_API_KEY")
+# ── Simple prompt — more reliable on smaller/local models ────────────────────
+_SIMPLE_EXTRACT_PROMPT = """Read this text and list what you find.
+
+Title: {title}
+Text: {text}
+
+Reply in this exact format (one item per line, comma-separated on each line):
+PEOPLE: name1, name2
+ORGS: org1, org2
+TECH: tech1, tech2
+CONCEPTS: concept1, concept2
+CLAIM: One important factual claim from the text.
+CLAIM: Another factual claim.
+"""
+
+
+def _clean_llm_output(text: str) -> str:
+    """Strip thinking tags, markdown fences, and leading/trailing noise."""
+    # Remove <think>...</think> blocks (Qwen, DeepSeek)
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    # Remove markdown code fences ```json ... ``` or ``` ... ```
+    text = re.sub(r"```(?:json)?\s*", "", text)
+    text = re.sub(r"```", "", text)
+    return text.strip()
+
+
+def _repair_json(text: str) -> str:
+    """Fix common JSON errors produced by local models."""
+    # Trailing commas before } or ]
+    text = re.sub(r",\s*([}\]])", r"\1", text)
+    # Unquoted True/False/None → JSON booleans/null
+    text = re.sub(r"\bTrue\b",  "true",  text)
+    text = re.sub(r"\bFalse\b", "false", text)
+    text = re.sub(r"\bNone\b",  "null",  text)
+    return text
+
+
+def _parse_extraction(response: str) -> Optional[dict[str, Any]]:
+    """Parse LLM response into extraction dict — handles Ollama output quirks."""
+    cleaned = _clean_llm_output(response)
+
+    # Try 1: direct parse
     try:
-        if ant_key:
-            from aria.engine.cleaner.llm_cleaner import _call_anthropic
+        result = json.loads(cleaned)
+        if isinstance(result, dict) and "entities" in result:
+            return result
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # Try 2: find first {...} block and parse it
+    match = re.search(r"\{.*\}", cleaned, re.DOTALL)
+    if match:
+        fragment = match.group(0)
+
+        # Try 2a: as-is
+        try:
+            result = json.loads(fragment)
+            if isinstance(result, dict):
+                return result
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        # Try 2b: after repair
+        try:
+            result = json.loads(_repair_json(fragment))
+            if isinstance(result, dict):
+                return result
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        # Try 2c: truncated JSON — try to close open brackets
+        try:
+            frag = fragment
+            opens = frag.count("{") - frag.count("}")
+            arr_opens = frag.count("[") - frag.count("]")
+            if opens > 0 or arr_opens > 0:
+                frag += "]" * max(0, arr_opens) + "}" * max(0, opens)
+                result = json.loads(_repair_json(frag))
+                if isinstance(result, dict):
+                    return result
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    return None
+
+
+def _parse_simple_extraction(response: str) -> Optional[dict[str, Any]]:
+    """Parse the simple line-format fallback response into an extraction dict."""
+    cleaned = _clean_llm_output(response)
+    entities: dict[str, list[str]] = {
+        "people": [], "organizations": [], "technologies": [],
+        "concepts": [], "locations": [],
+    }
+    claims: list[dict[str, Any]] = []
+
+    label_map = {
+        "people":    "people",
+        "person":    "people",
+        "orgs":      "organizations",
+        "org":       "organizations",
+        "organizations": "organizations",
+        "tech":      "technologies",
+        "technology": "technologies",
+        "technologies": "technologies",
+        "concepts":  "concepts",
+        "concept":   "concepts",
+        "locations": "locations",
+        "location":  "locations",
+        "places":    "locations",
+    }
+
+    for line in cleaned.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if ":" not in line:
+            continue
+        label, _, value = line.partition(":")
+        label = label.strip().lower()
+        value = value.strip()
+
+        if label == "claim":
+            if value:
+                claims.append({"claim": value, "confidence": "medium", "subject": ""})
+        elif label in label_map:
+            etype = label_map[label]
+            items = [v.strip() for v in value.split(",") if v.strip()]
+            entities[etype].extend(items)
+
+    # Only return if we got something
+    if any(entities.values()) or claims:
+        return {
+            "entities":           entities,
+            "claims":             claims,
+            "relationships":      [],
+            "sentiment_on_topic": "neutral",
+            "key_findings":       [c["claim"] for c in claims[:3]],
+        }
+    return None
+
+
+async def _call_llm(prompt: str, system: str, max_tokens: int = 800) -> Optional[str]:
+    """Call best available LLM — same provider as the cleaner."""
+    from aria.engine.cleaner.llm_cleaner import _call_anthropic, _call_openai_compat
+    from aria.engine.ensemble.providers import resolve_cleaning_llm
+    try:
+        provider, model_id, base_url, api_key = resolve_cleaning_llm(None)
+        if provider == "anthropic":
             return await _call_anthropic(
-                prompt, "claude-3-haiku-20240307", ant_key, system,
+                prompt, model_id, api_key, system,
                 max_tokens=max_tokens, temperature=0.1,
             )
-        elif or_key:
-            from aria.engine.cleaner.llm_cleaner import _call_openai_compat
+        else:
             return await _call_openai_compat(
-                prompt, "openai/gpt-4o-mini", or_key, "https://openrouter.ai/api/v1",
-                system, max_tokens=max_tokens, temperature=0.1,
-            )
-        elif oai_key:
-            from aria.engine.cleaner.llm_cleaner import _call_openai_compat
-            return await _call_openai_compat(
-                prompt, "gpt-4o-mini", oai_key, "https://api.openai.com/v1",
+                prompt, model_id, api_key, base_url,
                 system, max_tokens=max_tokens, temperature=0.1,
             )
     except Exception as exc:

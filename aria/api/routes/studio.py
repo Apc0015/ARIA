@@ -1,5 +1,5 @@
 """
-Studio-specific API adapter — normalized endpoints for the ARIA Studio web UI.
+React web UI API adapter — normalized endpoints for the ARIA web app.
 Registers at /api/studio/* so core /api/* routes are unchanged.
 Works in both real-backend mode (RunManager) and demo mode.
 """
@@ -16,7 +16,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 router = APIRouter(prefix="/api/studio")
 
-# In-memory credential store (studio-only, not persisted to .env)
+# In-memory credential store (web UI only, not persisted to .env)
 _studio_creds: list[dict] = []
 
 
@@ -94,7 +94,7 @@ async def login(payload: dict):
     email = payload.get("email", "user@aria.dev")
     name = payload.get("name", "ARIA Operator")
     return {
-        "token": "aria_studio_" + uuid.uuid4().hex[:12],
+        "token": "aria_web_" + uuid.uuid4().hex[:12],
         "user": {"email": email, "name": name},
     }
 

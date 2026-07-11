@@ -22,6 +22,15 @@ CONTENT_TYPES = [
 ]
 
 
+@router.get("/api/auth/key")
+async def get_api_key():
+    """Return the active API key — allows clients to self-configure auth.
+    This endpoint is intentionally exempt from authentication (see auth middleware).
+    """
+    from aria.api.middleware.auth import _API_KEY
+    return {"api_key": _API_KEY}
+
+
 @router.get("/api/health")
 async def health():
     """Health check endpoint."""

@@ -141,8 +141,23 @@ def validate_mission(mission: dict) -> dict:
         raise ValueError("Mission is missing a 'collection.topic' field.")
 
     depth = collection.get("depth", "medium")
+    # Accept README-style names ("surface/standard/deep/thorough/maximum") as aliases
+    _DEPTH_ALIASES = {
+        "surface":  "low",
+        "standard": "medium",
+        "deep":     "high",
+        "thorough": "high",
+        "maximum":  "exhaustive",
+    }
+    depth = _DEPTH_ALIASES.get(depth, depth)
+    # Write the resolved value back so downstream code always sees canonical names
+    collection["depth"] = depth
     if depth not in ("low", "medium", "high", "exhaustive"):
-        raise ValueError(f"Invalid depth '{depth}'. Must be one of: low, medium, high, exhaustive.")
+        raise ValueError(
+            f"Invalid depth '{depth}'. "
+            "Must be one of: low, medium, high, exhaustive "
+            "(or aliases: surface, standard, deep, thorough, maximum)."
+        )
 
     sources = collection.get("sources", {})
     enabled = sources.get("enabled", [])

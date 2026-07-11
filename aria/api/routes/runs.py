@@ -13,14 +13,14 @@ async def get_run_manager(request: Request) -> RunManager:
     return request.app.state.run_manager
 
 
-def _flutter_payload_to_mission_yaml(payload: dict) -> str:
-    """Convert Flutter UI payload to a mission YAML string."""
+def _ui_payload_to_mission_yaml(payload: dict) -> str:
+    """Convert React UI payload to a mission YAML string."""
     import yaml
 
     topic = payload.get("topic", "")
     intent = payload.get("intent", topic)
     depth_level = int(payload.get("depth_level", 2))
-    depth_names = {1: "low", 2: "medium", 3: "high", 4: "high", 5: "exhaustive"}
+    depth_names = {1: "surface", 2: "standard", 3: "deep", 4: "thorough", 5: "maximum"}  # Issue #5 fix
     max_docs = {1: 50, 2: 200, 3: 500, 4: 1500, 5: 5000}
 
     free_sources = payload.get("free_sources", {})
@@ -65,6 +65,21 @@ def _flutter_payload_to_mission_yaml(payload: dict) -> str:
         },
         "output": {"formats": ["json", "csv", "markdown"]},
     }
+
+    # Issue #1 fix — forward seed_doi / seed_url into citation_crawl block
+    seed_doi = payload.get("seed_doi", "").strip()
+    seed_url = payload.get("seed_url", "").strip()
+    if seed_doi or seed_url:
+        mission_dict["citation_crawl"] = {
+            "enabled": True,
+            "seed_doi": seed_doi,
+            "seed_url": seed_url,
+            "levels": 1,
+            "resolve_abstracts": True,
+            "fetch_open_access": True,
+            "max_refs": int(payload.get("max_refs", 100)),
+        }
+
     return yaml.dump(mission_dict, allow_unicode=True)
 
 
@@ -73,7 +88,7 @@ async def start_run(payload: dict, run_manager: RunManager = Depends(get_run_man
     """Start a new research run.
 
     Accepts either:
-    - Flutter UI format: {topic, intent, depth_level, free_sources, ...}
+    - React UI format:  {topic, intent, depth_level, free_sources, ...}
     - Direct format:     {mission_yaml: "..."}
 
     Optional: include director_session_id to wire in the Research Director brief.
@@ -91,10 +106,10 @@ async def start_run(payload: dict, run_manager: RunManager = Depends(get_run_man
                 payload = dict(payload)
                 payload["topic"] = research_brief["resolved_topic"]
 
-    # Convert Flutter payload to mission_yaml if needed
+    # Convert UI payload to mission_yaml if needed
     if "mission_yaml" not in payload and "topic" in payload:
         payload = {
-            "mission_yaml": _flutter_payload_to_mission_yaml(payload),
+            "mission_yaml": _ui_payload_to_mission_yaml(payload),
             # Preserve fields the orchestrator/run_manager reads from payload
             "flags":        payload.get("flags", {}),
             "credentials":  payload.get("credentials"),
@@ -119,11 +134,38 @@ async def start_run(payload: dict, run_manager: RunManager = Depends(get_run_man
     }
 
 
+@router.get("/api/runs/history")
+async def search_run_history(
+    search: str = "",
+    status: str = "",
+    limit: int = 50,
+    offset: int = 0,
+    run_manager: RunManager = Depends(get_run_manager),
+):
+    """Search historical runs from the persistent database.
+
+    Supports filtering by topic keyword and/or status.
+    Returns runs even after a server restart.
+    """
+    rows = run_manager._run_store.list_runs(
+        status=status or None,
+        search=search or None,
+        limit=limit,
+        offset=offset,
+    )
+    total = run_manager._run_store.count(status=status or None)
+    return {"runs": rows, "total": total, "limit": limit, "offset": offset}
+
+
 @router.get("/api/runs")
 async def list_runs(run_manager: RunManager = Depends(get_run_manager)):
-    """List all runs."""
+    """List all in-memory runs (current session)."""
     runs = []
     for run_id, state in run_manager.runs.items():
+        mission = state.mission or {}
+        collection = mission.get("collection", {}) if isinstance(mission, dict) else {}
+        docs_collected = state.docs_collected or state.stats.get("collected", 0)
+        docs_cleaned = state.docs_cleaned or state.stats.get("cleaned", 0)
         runs.append({
             "run_id": state.run_id,
             "status": state.status,
@@ -132,6 +174,10 @@ async def list_runs(run_manager: RunManager = Depends(get_run_manager)):
             "created_at": state.created_at,
             "updated_at": state.updated_at,
             "error": state.error,
+            "topic": collection.get("topic") or state.stats.get("topic") or state.message,
+            "sources_used": collection.get("sources", {}).get("enabled", []),
+            "total_documents": docs_cleaned or docs_collected or len(state.documents),
+            "progress": 100 if state.status == "completed" else (10 if state.status == "running" else 0),
         })
     return {"runs": runs, "total": len(runs)}
 
@@ -150,9 +196,10 @@ async def get_run_documents(run_id: str, run_manager: RunManager = Depends(get_r
     if run_id not in run_manager.runs:
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
     state = run_manager.runs[run_id]
+    documents = [_normalize_document(doc) for doc in state.documents[:100]]
     return {
         "run_id": run_id,
-        "documents": state.documents[:100],
+        "documents": documents,
         "total": len(state.documents),
     }
 
@@ -180,4 +227,14 @@ async def get_run_ensemble_documents(run_id: str, run_manager: RunManager = Depe
         "run_id": run_id,
         "documents": state.ensemble_documents,
         "total": len(state.ensemble_documents),
+    }
+
+
+def _normalize_document(doc: dict) -> dict:
+    """Return a React-friendly document preview shape."""
+    return {
+        **doc,
+        "title": doc.get("title") or doc.get("url") or "Untitled document",
+        "source": doc.get("source") or doc.get("platform") or doc.get("source_type") or "unknown",
+        "summary": doc.get("summary") or doc.get("text_english") or doc.get("text", "")[:300],
     }

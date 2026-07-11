@@ -7,6 +7,7 @@ import type { Run } from "@/types";
 const statusBarColor: Record<string, string> = {
   running: "bg-aria-accent status-glow-violet",
   completed: "bg-aria-success",
+  queued: "bg-aria-text4/30",
   pending: "bg-aria-text4/30",
   failed: "bg-red-500",
   cancelled: "bg-aria-text4/30",

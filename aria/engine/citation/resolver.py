@@ -12,7 +12,7 @@ import httpx
 logger = logging.getLogger("aria")
 
 _CROSSREF = "https://api.crossref.org/works"
-_ARXIV_API = "http://export.arxiv.org/api/query"
+_ARXIV_API = "https://export.arxiv.org/api/query"   # https — avoids 301 redirect
 _PUBMED_SUMMARY = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
 _SEMANTIC_SCHOLAR = "https://api.semanticscholar.org/graph/v1/paper"
 

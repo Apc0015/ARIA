@@ -1,4 +1,4 @@
-"""FastAPI application for ARIA Studio."""
+"""FastAPI application for ARIA."""
 
 from __future__ import annotations
 
@@ -10,13 +10,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-_STUDIO_DIR = Path(__file__).parent.parent / "studio"
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_REACT_DIST_DIR = _REPO_ROOT / "aria-report" / "dist"
 
 # ---------------------------------------------------------------------------
 # Attempt to load the real backend (requires aria.engine to be installed).
 # Fall back to a lightweight demo mode if the dependency is absent.
 # ---------------------------------------------------------------------------
 from aria.api.routes.studio import router as studio_router
+from aria.api.routes.verify import router as verify_router
 
 try:
     from aria.api.run_manager import RunManager
@@ -24,13 +26,15 @@ try:
         credentials_router,
         director_router,
         exports_router,
-        flutter_router,
         health_router,
         missions_router,
         runs_router,
         domains_router,
         chat_router,
         sources_router,
+        metrics_router,
+        stream_router,
+        seed_router,
     )
     USE_REAL_BACKEND = True
 except ImportError:
@@ -41,7 +45,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 
 app = FastAPI(
-    title="ARIA Studio API",
+    title="ARIA API",
     version="5.0.0",
     description="Agentic Research Intelligence Architecture",
 )
@@ -50,7 +54,7 @@ import os as _os
 
 _ALLOWED_ORIGINS = _os.environ.get(
     "ARIA_ALLOWED_ORIGINS",
-    "http://localhost:8765,http://127.0.0.1:8765,http://localhost:3000,http://localhost:4200",
+    "http://localhost:8765,http://127.0.0.1:8765,http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://localhost:4200",
 ).split(",")
 
 app.add_middleware(
@@ -76,8 +80,8 @@ if USE_REAL_BACKEND:
     app.state.run_manager = run_manager
 
     app.include_router(health_router)
-    app.include_router(studio_router)    # Studio web UI adapter (normalized shapes)
-    app.include_router(flutter_router)   # Flutter-specific endpoints (overrides must come before generic ones)
+    app.include_router(studio_router)    # React web UI adapter (normalized shapes)
+    app.include_router(verify_router)    # Credential verify + LLM status
     app.include_router(runs_router)
     app.include_router(exports_router)
     app.include_router(credentials_router)
@@ -86,6 +90,9 @@ if USE_REAL_BACKEND:
     app.include_router(chat_router)      # ARIA 5.0: intent agent streaming chat
     app.include_router(director_router)  # Research Director: pre-flight conversation
     app.include_router(sources_router)  # Source listing with group classification
+    app.include_router(metrics_router)  # Real-time metrics + Prometheus endpoint
+    app.include_router(stream_router)   # SSE live event stream per run
+    app.include_router(seed_router)    # Seed paper resolve + PDF upload
 
 # ---------------------------------------------------------------------------
 # Demo / fallback routes (only active when aria.engine is not available)
@@ -238,43 +245,33 @@ else:
     async def _demo_validate(payload: dict):
         return {"valid": True, "mission": {}, "note": "demo mode - validation skipped"}
 
-    # Studio adapter works in demo mode too (no RunManager dependency)
+    # Studio adapter + verify/LLM status work in demo mode too
     app.include_router(studio_router)
+    app.include_router(verify_router)
 
 # ---------------------------------------------------------------------------
 # Root endpoint (always present)
 # ---------------------------------------------------------------------------
 
-@app.get("/studio", include_in_schema=False)
-@app.get("/studio/", include_in_schema=False)
-async def studio():
-    """Studio UI — redirects to Flutter app (use aria_studio Flutter app)."""
-    if _STUDIO_DIR.exists():
-        return FileResponse(_STUDIO_DIR / "index.html")
-    from fastapi.responses import JSONResponse
-    return JSONResponse({
-        "message": "ARIA Studio UI has moved to the Flutter desktop app",
-        "version": "5.0.0",
-        "flutter_app": "Run: cd aria_studio && flutter run",
-        "api_docs": "/docs",
-    })
-
-@app.get("/")
+@app.get("/", include_in_schema=False)
 async def root():
-    """Root endpoint."""
+    """Serve the React UI when built; otherwise expose API metadata."""
+    index = _REACT_DIST_DIR / "index.html"
+    if index.exists():
+        return FileResponse(index)
     return {
-        "message": "ARIA Studio API",
+        "message": "ARIA API",
         "version": "5.0.0",
         "backend": "real" if USE_REAL_BACKEND else "demo",
         "docs": "/docs",
-        "studio": "/studio",
+        "ui": "Run React dev server from aria-report or build aria-report/dist",
         "health": "/api/health",
     }
 
 
-# Mount studio static assets (must come after all API routes)
-if _STUDIO_DIR.exists():
-    app.mount("/studio", StaticFiles(directory=str(_STUDIO_DIR), html=True), name="studio")
+# Mount React static assets and SPA fallback (must come after all API routes).
+if _REACT_DIST_DIR.exists():
+    app.mount("/", StaticFiles(directory=str(_REACT_DIST_DIR), html=True), name="react")
 
 if __name__ == "__main__":
     import uvicorn

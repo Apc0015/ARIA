@@ -16,8 +16,10 @@ from aria.access.credentials import CredentialManager
 from aria.config import load_config
 from aria.mission import load_mission_text
 from aria.orchestrator.master import MasterOrchestrator, RunResult
+from aria.types.credentials import CredentialScope
 from aria.utils.logger import configure_logging
 from aria.engine.ensemble.providers import build_provider_catalog, default_llm_source_models, describe_cleaning_brain
+from aria.engine.storage.run_store import RunStore
 
 _logger = logging.getLogger("aria")
 
@@ -52,6 +54,9 @@ class RunState:
     updated_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     logs: list[dict[str, Any]] = field(default_factory=list)
     stats: dict[str, Any] = field(default_factory=dict)
+    # Live counters — updated mid-run from pipeline events so clients see progress
+    docs_collected: int = 0
+    docs_cleaned: int = 0
     exports: dict[str, str] = field(default_factory=dict)
     report_path: str = ""
     documents: list[dict[str, Any]] = field(default_factory=list)
@@ -60,6 +65,9 @@ class RunState:
     error: str | None = None
     mission: dict[str, Any] | None = None
     output_dir: str = ""
+    # Per-source tracking — lets the UI show a source-by-source breakdown
+    source_stats: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # e.g. {"web": {"docs": 23, "status": "ok"}, "twitter": {"docs": 0, "status": "skipped", "reason": "no token"}}
     # Intelligence outputs
     knowledge_graph: dict[str, Any] = field(default_factory=dict)
     gap_analysis: dict[str, Any] = field(default_factory=dict)
@@ -80,8 +88,35 @@ class RunManager:
         self._run_semaphore = asyncio.Semaphore(
             int(os.environ.get("ARIA_MAX_CONCURRENT_RUNS", "20"))
         )
-        # Serialize env-var mutations (auth tokens are set globally per-run)
-        self._env_lock = asyncio.Lock()
+        # Persistent run store — survives server restarts
+        self._run_store = RunStore()
+        self._restore_runs_from_db()
+
+    def _restore_runs_from_db(self) -> None:
+        """Load completed/failed run metadata from SQLite into memory on startup."""
+        try:
+            for row in self._run_store.list_runs(limit=500):
+                run_id = row["run_id"]
+                state = RunState(
+                    run_id=run_id,
+                    status=row.get("status", "unknown"),
+                    stage=row.get("stage", ""),
+                    message=row.get("message", ""),
+                    created_at=row.get("created_at", ""),
+                    updated_at=row.get("updated_at", ""),
+                    error=row.get("error"),
+                    mission=row.get("mission"),
+                    output_dir=row.get("output_dir", ""),
+                    stats=row.get("stats", {}),
+                    exports=row.get("exports", {}),
+                    report_path=row.get("report_path", ""),
+                    source_stats=row.get("source_stats", {}),
+                    query_plan=row.get("query_plan", {}),
+                )
+                self.runs[run_id] = state
+            _logger.info("RunManager: restored %d runs from database", len(self.runs))
+        except Exception as exc:
+            _logger.warning("RunManager: could not restore runs from DB: %s", exc)
 
     def list_templates(self) -> list[dict[str, Any]]:
         templates: list[dict[str, Any]] = []
@@ -89,9 +124,21 @@ class RunManager:
             templates.append({"name": path.stem, "path": str(path), "content": path.read_text(encoding="utf-8")})
         return templates
 
+    @staticmethod
+    def _mask(value: str) -> str:
+        """Mask a credential value so only the first/last 4 chars are visible."""
+        if not value or len(value) < 8:
+            return "***"
+        return value[:4] + "*" * (len(value) - 8) + value[-4:]
+
     def get_credentials(self) -> dict[str, Any]:
         manager = CredentialManager(self.base_settings.credentials_file)
-        return {"platforms": manager.credentials}
+        raw = manager.credentials
+        masked = {
+            k: self._mask(v) if isinstance(v, str) and v else v
+            for k, v in raw.items()
+        }
+        return {"platforms": masked}
 
     def save_credentials(self, credentials_payload: dict[str, Any]) -> Path:
         manager = CredentialManager()
@@ -102,28 +149,13 @@ class RunManager:
         return load_mission_text(mission_yaml)
 
     def set_brain_config(self, config: dict) -> None:
-        """Store user's cleaning brain selection: {provider, model_id, api_key, base_url}"""
+        """Store user's cleaning brain selection: {provider, model_id, api_key, base_url}.
+
+        Config is stored in self._brain_config only — no os.environ mutation here.
+        It is applied per-run inside _execute_run() via settings.with_llm_override()
+        so concurrent runs never stomp each other's LLM credentials.
+        """
         self._brain_config = config
-        # Also set env vars so resolve_cleaning_llm() picks them up
-        provider = config.get("provider", "")
-        api_key = config.get("api_key", "")
-        model_id = config.get("model_id", "")
-        base_url = config.get("base_url", "")
-        import os
-        if provider == "anthropic" and api_key:
-            os.environ["ANTHROPIC_API_KEY"] = api_key
-            os.environ["ANTHROPIC_MODEL"] = model_id
-        elif provider == "openrouter" and api_key:
-            os.environ["OPENROUTER_API_KEY"] = api_key
-            os.environ["OPENROUTER_MODEL"] = model_id
-        elif provider == "openai" and api_key:
-            os.environ["OPENAI_API_KEY"] = api_key
-            os.environ["OPENAI_MODEL"] = model_id
-        elif provider == "ollama":
-            os.environ["OLLAMA_MODEL"] = model_id
-            if base_url:
-                os.environ["OLLAMA_BASE_URL"] = base_url
-        os.environ["LLM_PROVIDER"] = provider
 
     def get_brain_config(self) -> dict:
         """Return current brain config (user-set or auto-detected from env)."""
@@ -161,9 +193,22 @@ class RunManager:
             mission = dict(mission)
             mission["_research_brief"] = research_brief
 
+        collection = mission.get("collection", {}) if isinstance(mission, dict) else {}
+        topic = collection.get("topic", "")
         state = RunState(run_id=run_id, mission=mission, output_dir=str(output_dir))
         async with self._lock:
             self.runs[run_id] = state
+        # Persist immediately so it survives restart even if the run never completes
+        self._run_store.upsert(
+            run_id,
+            status="queued",
+            stage="queued",
+            message="Queued",
+            topic=topic,
+            output_dir=str(output_dir),
+            mission=mission,
+            created_at=state.created_at,
+        )
         credentials = payload.get("credentials")
         if credentials:
             self.save_credentials(credentials)
@@ -174,58 +219,49 @@ class RunManager:
 
     async def _execute_run(self, state: RunState, payload: dict[str, Any]) -> None:
         async with self._run_semaphore:  # acquire slot — released when run finishes
-            _TOKEN_ENV_MAP = {
-                "twitter_bearer_token": "TWITTER_BEARER_TOKEN",
-                "linkedin_email":       "LINKEDIN_EMAIL",
-                "linkedin_password":    "LINKEDIN_PASSWORD",
-                "notion_token":         "NOTION_TOKEN",
-                "slack_token":          "SLACK_TOKEN",
-                "vimeo_token":          "VIMEO_ACCESS_TOKEN",
-                "github_token":         "GITHUB_TOKEN",
-                "news_api_key":         "NEWS_API_KEY",
-                "gnews_api_key":        "GNEWS_API_KEY",
-            }
+            # Build a per-run CredentialScope from the payload — no os.environ mutation.
+            # Concurrent runs each hold their own scope; no race condition possible.
             auth_tokens = payload.get("auth_tokens", {})
-            # Snapshot prior env so we can restore after the run (scope tokens to this run).
-            prior_env: dict[str, str | None] = {}
+            zotero_cfg = payload.get("zotero_config") or {}
 
-            # Acquire env lock to safely set auth env vars
-            async with self._env_lock:
-                for payload_key, env_key in _TOKEN_ENV_MAP.items():
-                    val = auth_tokens.get(payload_key, "")
-                    if val:
-                        prior_env[env_key] = os.environ.get(env_key)
-                        os.environ[env_key] = val
+            # Merge zotero fields into the flat token dict for from_dict()
+            merged_tokens = dict(auth_tokens)
+            if zotero_cfg.get("api_key"):
+                merged_tokens["zotero_api_key"] = zotero_cfg["api_key"]
+            if zotero_cfg.get("library_id"):
+                merged_tokens["zotero_library_id"] = str(zotero_cfg["library_id"])
 
-                # Zotero: api_key + library_id + library_type from top-level zotero_config
-                zotero_config = payload.get("zotero_config") or {}
-                for cfg_key, env_key in (
-                    ("api_key",      "ZOTERO_API_KEY"),
-                    ("library_id",   "ZOTERO_LIBRARY_ID"),
-                    ("library_type", "ZOTERO_LIBRARY_TYPE"),
-                ):
-                    val = (zotero_config.get(cfg_key) or "").strip() if isinstance(zotero_config.get(cfg_key), str) else zotero_config.get(cfg_key)
-                    if val:
-                        prior_env[env_key] = os.environ.get(env_key)
-                        os.environ[env_key] = str(val)
+            credential_scope = CredentialScope.from_dict(merged_tokens)
 
             try:
-                # orchestrator runs WITHOUT holding env_lock (env vars are now set)
                 flags = payload.get("flags", {})
-                provider = payload.get("provider", {})
-                settings = load_config(output_dir=Path(state.output_dir))
+                # Resolve LLM provider: per-run payload takes priority over
+                # session-level brain config, which takes priority over env vars.
+                provider = payload.get("provider") or self._brain_config or {}
+                output_dir = Path(state.output_dir)
+                settings = load_config(output_dir=output_dir)
+                # Point runs_dir at the parent so the engine stores files directly
+                # inside output_dir (data/runs/<run_id>/) rather than the default
+                # data/runs/<run_id>/runs/<inner_id>/ double-nesting.
+                settings = settings.model_copy(update={"runs_dir": output_dir.parent})
                 if provider:
                     settings = settings.with_llm_override(
                         provider=provider.get("provider"),
-                        model=provider.get("model"),
+                        model=provider.get("model") or provider.get("model_id"),
                         api_key=provider.get("api_key"),
                         base_url=provider.get("base_url"),
                     )
                 logger = configure_logging(verbose=True)
-                orchestrator = MasterOrchestrator(settings, logger, event_callback=lambda event: self.record_event(state.run_id, event))
+                orchestrator = MasterOrchestrator(
+                    settings,
+                    logger,
+                    event_callback=lambda event: self.record_event(state.run_id, event),
+                    credential_scope=credential_scope,
+                )
                 await self._update_state(state.run_id, status="running", stage="starting", message="Run started")
                 result = await orchestrator.run(
                     state.mission or {},
+                    run_id=state.run_id,
                     collect_only=bool(flags.get("collect_only", False)),
                     clean_only=bool(flags.get("clean_only", False)),
                     validate_credentials=bool(flags.get("validate_credentials", False)),
@@ -239,22 +275,57 @@ class RunManager:
                 _logger.exception("Run %s failed", state.run_id)
                 safe_error = f"{type(exc).__name__}: {_scrub_secrets(str(exc))[:400]}"
                 await self._update_state(state.run_id, status="failed", stage="failed", message="Run failed", error=safe_error)
-            finally:
-                # Re-acquire env lock to safely restore env vars
-                async with self._env_lock:
-                    for env_key, prior_val in prior_env.items():
-                        if prior_val is None:
-                            os.environ.pop(env_key, None)
-                        else:
-                            os.environ[env_key] = prior_val
 
     async def record_event(self, run_id: str, event: dict[str, Any]) -> None:
         async with self._lock:
             state = self.runs[run_id]
             state.logs.append(event)
-            state.stage = event.get("stage", state.stage)
+            stage = event.get("stage", "")
+            state.stage = stage or state.stage
             state.message = event.get("message", state.message)
+            msg = event.get("message", "")
+
+            # Update live counters so clients see progress during the run
+            if stage in ("collect_done", "source_done") and "count" in event:
+                state.docs_collected = max(state.docs_collected, int(event["count"]))
+            if stage == "collect_done":
+                state.stats.setdefault("dedup", {})
+                state.stats["dedup"]["total_before"] = event.get("total_before_dedup", 0)
+                state.stats["dedup"]["duplicates_removed"] = event.get("duplicates_removed", 0)
+            elif stage in ("clean_progress", "clean_done") and "count" in event:
+                state.docs_cleaned = int(event["count"])
+
+            # Per-source stats — parse "SourceName: N docs" messages from source_done events
+            if stage == "source_done" and msg:
+                # Message format: "Reddit: 23 docs" or "Twitter: 0 docs (skipped)"
+                import re as _re
+                m = _re.match(r"^(.+?):\s*(\d+)\s*docs?(.*)?$", msg, _re.IGNORECASE)
+                if m:
+                    src_label = m.group(1).strip().lower().replace(" ", "_")
+                    doc_count = int(m.group(2))
+                    suffix = (m.group(3) or "").strip().lower()
+                    status = "ok" if doc_count > 0 else "empty"
+                    reason = None
+                    if "skipped" in suffix or "no token" in suffix or "no credential" in suffix:
+                        status = "skipped"
+                        reason = suffix.strip("() ") or "no credentials"
+                    elif "error" in suffix or "failed" in suffix:
+                        status = "error"
+                        reason = suffix.strip("() ") or "unknown error"
+                    state.source_stats[src_label] = {
+                        "docs": doc_count,
+                        "status": status,
+                        **({"reason": reason} if reason else {}),
+                    }
+
             state.updated_at = datetime.now(timezone.utc).isoformat()
+
+        # Push event to any active SSE subscribers (non-blocking)
+        try:
+            from aria.api.routes.stream import publish_event
+            publish_event(run_id, event.get("stage", "event"), event)
+        except Exception:
+            pass
 
     async def _complete_run(self, run_id: str, result: RunResult) -> None:
         async with self._lock:
@@ -276,6 +347,20 @@ class RunManager:
             state.images = result.images or []
             state.query_plan = result.query_plan or {}
             state.updated_at = datetime.now(timezone.utc).isoformat()
+        # Persist final state to SQLite
+        self._run_store.upsert(
+            run_id,
+            status="completed",
+            stage="completed",
+            message="Run completed",
+            stats=result.stats,
+            exports=result.export_paths,
+            report_path=result.report_path,
+            docs_collected=state.docs_collected,
+            docs_cleaned=state.docs_cleaned,
+            source_stats=state.source_stats,
+            query_plan=result.query_plan or {},
+        )
 
     async def _update_state(self, run_id: str, **updates: Any) -> None:
         async with self._lock:
@@ -283,10 +368,36 @@ class RunManager:
             for key, value in updates.items():
                 setattr(state, key, value)
             state.updated_at = datetime.now(timezone.utc).isoformat()
+        # Persist key status fields (skip large document lists)
+        _DB_FIELDS = {"status", "stage", "message", "error", "docs_collected", "docs_cleaned"}
+        db_updates = {k: v for k, v in updates.items() if k in _DB_FIELDS}
+        if db_updates:
+            self._run_store.upsert(run_id, **db_updates)
 
     async def get_run(self, run_id: str) -> dict[str, Any]:
         async with self._lock:
             state = self.runs[run_id]
+            mission = state.mission or {}
+            collection = mission.get("collection", {}) if isinstance(mission, dict) else {}
+            docs_collected = state.docs_collected or state.stats.get("collected", 0)
+            docs_cleaned = state.docs_cleaned or state.stats.get("cleaned", 0)
+            total_documents = docs_cleaned or docs_collected or len(state.documents)
+            if state.status == "completed":
+                progress = 100
+            elif state.status in {"failed", "cancelled"}:
+                progress = 100
+            elif state.stage in {"export", "report", "export_done"}:
+                progress = 90
+            elif state.stage in {"knowledge_graph", "images", "kb_save", "score"}:
+                progress = 80
+            elif state.stage in {"cleaning", "clean_progress", "clean_done"}:
+                progress = 65
+            elif docs_collected:
+                progress = 40
+            elif state.status == "running":
+                progress = 10
+            else:
+                progress = 0
             return {
                 "run_id": state.run_id,
                 "status": state.status,
@@ -301,6 +412,12 @@ class RunManager:
                 "documents": state.documents,
                 "raw_documents": state.raw_documents,
                 "ensemble_documents": state.ensemble_documents,
+                "docs_collected": docs_collected,
+                "docs_cleaned": docs_cleaned,
+                "topic": collection.get("topic") or state.stats.get("topic") or state.message,
+                "sources_used": collection.get("sources", {}).get("enabled", []),
+                "total_documents": total_documents,
+                "progress": progress,
                 "error": state.error,
                 "output_dir": state.output_dir,
                 # Intelligence outputs (lightweight summaries for main status call)
@@ -310,5 +427,6 @@ class RunManager:
                 "contradictions_count": len((state.knowledge_graph or {}).get("contradictions", [])),
                 "gaps_count": len((state.gap_analysis or {}).get("gaps", [])),
                 "top_entities": (state.knowledge_graph or {}).get("top_entities", [])[:10],
+                "source_stats": state.source_stats,
                 "query_plan": state.query_plan,
             }

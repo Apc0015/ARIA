@@ -1,10 +1,8 @@
 {
-  "enabledPlugins": {
-    "superpowers@claude-plugins-official": true,
-    "code-review@claude-plugins-official": true,
-    "frontend-design@claude-plugins-official": true,
-    "skill-creator@claude-plugins-official": true,
-    "figma@claude-plugins-official": true,
-    "code-simplifier@claude-plugins-official": true
+  "permissions": {
+    "allow": [
+      "Bash(python -m aria.cli --serve-api)",
+      "Bash(curl -s http://localhost:8000/health)"
+    ]
   }
 }

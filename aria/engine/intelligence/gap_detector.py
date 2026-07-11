@@ -122,28 +122,21 @@ def _summarise_corpus(docs: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 async def _call_llm(prompt: str) -> Optional[str]:
-    """Call best available LLM."""
-    ant_key = os.getenv("ANTHROPIC_API_KEY")
-    or_key = os.getenv("OPENROUTER_API_KEY")
-    oai_key = os.getenv("OPENAI_API_KEY")
+    """Call best available LLM — same priority order as the cleaner."""
+    from aria.engine.cleaner.llm_cleaner import _call_anthropic, _call_openai_compat
+    from aria.engine.ensemble.providers import resolve_cleaning_llm
 
     try:
-        if ant_key:
-            from aria.engine.cleaner.llm_cleaner import _call_anthropic
+        provider, model_id, base_url, api_key = resolve_cleaning_llm(None)
+        if provider == "anthropic":
             return await _call_anthropic(
-                prompt, "claude-3-haiku-20240307", ant_key, _GAP_SYSTEM,
+                prompt, model_id, api_key, _GAP_SYSTEM,
                 max_tokens=1500, temperature=0.2,
             )
-        elif or_key:
-            from aria.engine.cleaner.llm_cleaner import _call_openai_compat
+        else:
+            # Covers ollama, openai, openrouter, and any openai-compat provider
             return await _call_openai_compat(
-                prompt, "openai/gpt-4o-mini", or_key, "https://openrouter.ai/api/v1",
-                _GAP_SYSTEM, max_tokens=1500, temperature=0.2,
-            )
-        elif oai_key:
-            from aria.engine.cleaner.llm_cleaner import _call_openai_compat
-            return await _call_openai_compat(
-                prompt, "gpt-4o-mini", oai_key, "https://api.openai.com/v1",
+                prompt, model_id, api_key, base_url,
                 _GAP_SYSTEM, max_tokens=1500, temperature=0.2,
             )
     except Exception as exc:

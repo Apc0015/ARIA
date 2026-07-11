@@ -63,8 +63,6 @@ export const SOURCES: SourceDef[] = [
   // Social — standard
   { id: "twitter", name: "Twitter / X", category: "social", group: "standard", description: "Tweets and threads", icon: "𝕏",
     credentials: [{ key: "TWITTER_BEARER_TOKEN", label: "Bearer Token", placeholder: "AAAA...", required: true, type: "password" }] },
-  { id: "linkedin", name: "LinkedIn", category: "social", group: "standard", description: "Professional posts and articles", icon: "💼",
-    credentials: [{ key: "LINKEDIN_ACCESS_TOKEN", label: "Access Token", placeholder: "...", required: true, type: "password" }] },
   { id: "slack", name: "Slack", category: "social", group: "standard", description: "Channel messages (requires bot token)", icon: "💬",
     credentials: [{ key: "SLACK_BOT_TOKEN", label: "Bot Token", placeholder: "xoxb-...", required: true, type: "password" }] },
   // Media — standard

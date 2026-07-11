@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { useRun, useRunDocuments } from "@/hooks/useRun";
 import { api } from "@/lib/api";
 import { formatDistanceToNow } from "date-fns";
+import { toast } from "sonner";
 
 const stagger = { animate: { transition: { staggerChildren: 0.04 } } };
 const item = { initial: { opacity: 0, y: 8 }, animate: { opacity: 1, y: 0, transition: { duration: 0.18 } } };
@@ -21,7 +22,19 @@ export default function Report() {
   const docs = docsData?.documents ?? [];
   const totalDocs = docsData?.total ?? 0;
 
-  function download(url: string, name: string) {
+  async function download(kind: "markdown" | "json" | "csv" | "raw") {
+    if (!runId) return;
+    try {
+      const { blob, filename } = await api.exports.download(runId, kind);
+      const url = URL.createObjectURL(blob);
+      triggerDownload(url, filename);
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Download failed");
+    }
+  }
+
+  function triggerDownload(url: string, name: string) {
     const a = document.createElement("a");
     a.href = url; a.download = name; a.click();
   }
@@ -90,17 +103,17 @@ export default function Report() {
               {/* Export buttons */}
               <div className="flex flex-wrap gap-2">
                 {[
-                  { label: "Markdown", icon: FileText, url: api.exports.markdown(runId ?? "") },
-                  { label: "JSON", icon: FileJson, url: api.exports.json(runId ?? "") },
-                  { label: "CSV", icon: Table, url: api.exports.csv(runId ?? "") },
-                  { label: "Raw", icon: Download, url: api.exports.raw(runId ?? "") },
-                ].map(({ label, icon: Icon, url }) => (
+                  { label: "Markdown", icon: FileText, kind: "markdown" as const },
+                  { label: "JSON", icon: FileJson, kind: "json" as const },
+                  { label: "CSV", icon: Table, kind: "csv" as const },
+                  { label: "Raw", icon: Download, kind: "raw" as const },
+                ].map(({ label, icon: Icon, kind }) => (
                   <Button
                     key={label}
                     size="sm"
                     variant="outline"
                     className="text-[11px] h-8 border-[var(--aria-border)] bg-transparent text-aria-text2 hover:bg-[rgba(255,255,255,0.03)] rounded-[6px]"
-                    onClick={() => download(url, `aria-${runId}-${label.toLowerCase()}`)}
+                    onClick={() => download(kind)}
                   >
                     <Icon size={11} className="mr-1.5" /> {label}
                   </Button>

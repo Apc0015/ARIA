@@ -37,10 +37,19 @@ class Config(BaseModel):
 
     gap_detection_enabled: bool = True
     knowledge_graph_enabled: bool = True
-    semantic_dedup_enabled: bool = True
+    semantic_dedup_enabled: bool = False  # opt-in — requires sentence-transformers
     smart_query_planning: bool = True
     image_extraction_enabled: bool = True
     streaming_clean: bool = False
+    # Link crawl — follow outbound links from scraped web pages
+    link_crawl_enabled: bool = True
+    link_crawl_depth: int = 2         # 1 = direct links only; 2 = links-of-links
+    link_crawl_max_per_doc: int = 2   # links to follow per source page
+    link_crawl_max_total: int = 20    # hard cap across all pages in a run
+    # Citation following — resolve DOI/arXiv/PMID references found in docs
+    citation_following_enabled: bool = True
+    citation_depth: int = 1           # 1 = direct citations only; 2 = citations-of-citations
+    citation_max: int = 20            # max papers to fetch per run
     
     
     def ensure_directories(self) -> None:
@@ -102,10 +111,17 @@ def load_config(output_dir: Path | None = None) -> Config:
         kb_enabled=os.getenv("ARIA_KB_ENABLED", "true").lower() not in ("false", "0", "no"),
         gap_detection_enabled=os.getenv("ARIA_GAP_DETECTION", "true").lower() not in ("false", "0", "no"),
         knowledge_graph_enabled=os.getenv("ARIA_KNOWLEDGE_GRAPH", "true").lower() not in ("false", "0", "no"),
-        semantic_dedup_enabled=os.getenv("ARIA_SEMANTIC_DEDUP", "true").lower() not in ("false", "0", "no"),
+        semantic_dedup_enabled=os.getenv("ARIA_SEMANTIC_DEDUP", "false").lower() in ("true", "1", "yes"),
         smart_query_planning=os.getenv("ARIA_SMART_QUERIES", "true").lower() not in ("false", "0", "no"),
         image_extraction_enabled=os.getenv("ARIA_IMAGE_EXTRACTION", "true").lower() not in ("false", "0", "no"),
         streaming_clean=os.getenv("ARIA_STREAMING_CLEAN", "false").lower() not in ("false", "0", "no"),
+        link_crawl_enabled=os.getenv("ARIA_LINK_CRAWL", "true").lower() not in ("false", "0", "no"),
+        link_crawl_depth=int(os.getenv("ARIA_LINK_CRAWL_DEPTH", "2")),
+        link_crawl_max_per_doc=int(os.getenv("ARIA_LINK_CRAWL_PER_DOC", "2")),
+        link_crawl_max_total=int(os.getenv("ARIA_LINK_CRAWL_MAX", "20")),
+        citation_following_enabled=os.getenv("ARIA_CITATIONS", "true").lower() not in ("false", "0", "no"),
+        citation_depth=int(os.getenv("ARIA_CITATION_DEPTH", "1")),
+        citation_max=int(os.getenv("ARIA_CITATION_MAX", "20")),
     )
     
     config.ensure_directories()
