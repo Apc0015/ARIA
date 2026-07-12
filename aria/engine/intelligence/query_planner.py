@@ -7,6 +7,7 @@ Replaces the simple keyword-variant approach with LLM-driven research strategy.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -131,21 +132,41 @@ async def _llm_plan(topic: str, intent: str, year: int) -> Optional[dict[str, An
     """Try available LLM APIs to generate plan."""
     from aria.engine.ensemble.providers import resolve_cleaning_llm
     from aria.engine.cleaner.llm_cleaner import _call_anthropic, _call_openai_compat
+    from aria.engine.utils.retry import with_retry
+    import os
 
     provider, model_id, base_url, api_key = resolve_cleaning_llm(None)
     prompt = _PLANNER_PROMPT.format(topic=topic, intent=intent or topic, year=year)
 
     try:
-        if provider == "anthropic":
-            response_text = await _call_anthropic(
-                prompt, model_id, api_key, _PLANNER_SYSTEM,
-                max_tokens=1200, temperature=0.3,
+        timeout = float(os.getenv("ARIA_LLM_TIMEOUT", "60"))
+        max_attempts = int(os.getenv("ARIA_LLM_RETRY_MAX", "3"))
+        base_delay = float(os.getenv("ARIA_LLM_RETRY_BASE", "1.0"))
+        max_delay = float(os.getenv("ARIA_LLM_RETRY_MAX_DELAY", "20.0"))
+
+        async def _call() -> str:
+            if provider == "anthropic":
+                return await asyncio.wait_for(
+                    _call_anthropic(
+                        prompt, model_id, api_key, _PLANNER_SYSTEM,
+                        max_tokens=1200, temperature=0.3,
+                    ),
+                    timeout=timeout,
+                )
+            return await asyncio.wait_for(
+                _call_openai_compat(
+                    prompt, model_id, api_key, base_url,
+                    _PLANNER_SYSTEM, max_tokens=1200, temperature=0.3,
+                ),
+                timeout=timeout,
             )
-        else:
-            response_text = await _call_openai_compat(
-                prompt, model_id, api_key, base_url,
-                _PLANNER_SYSTEM, max_tokens=1200, temperature=0.3,
-            )
+
+        response_text = await with_retry(
+            _call,
+            max_attempts=max_attempts,
+            base_delay=base_delay,
+            max_delay=max_delay,
+        )
     except Exception as exc:
         logger.debug("LLM plan call failed: %s", exc)
         return None

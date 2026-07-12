@@ -1,4 +1,4 @@
-.PHONY: install run api test clean format lint check
+.PHONY: install run api web web-build web-test test clean format lint check
 
 install:
 	pip install -e ".[dev]"
@@ -9,6 +9,15 @@ run:
 
 api:
 	python -m aria.cli --serve-api
+
+web:
+	cd aria-report && npm run dev
+
+web-build:
+	cd aria-report && npm run build
+
+web-test:
+	cd aria-report && npm run test
 
 test:
 	pytest tests/ -v --tb=short

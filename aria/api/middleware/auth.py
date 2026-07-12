@@ -1,22 +1,31 @@
-"""Simple static API key authentication for ARIA Studio API."""
+"""Simple static API key authentication for ARIA API routes."""
 from __future__ import annotations
 
 import os
 import secrets
+import logging
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-# Read from env; if not set, generate a random key at startup and print it.
+logger = logging.getLogger("aria")
+
+# Read from env; if missing, auth can be explicitly disabled.
 _API_KEY: str = os.environ.get("ARIA_API_KEY", "")
-if not _API_KEY:
-    _API_KEY = secrets.token_urlsafe(32)
-    print(
-        f"\n⚠️  ARIA_API_KEY not set. Using ephemeral key (changes on every restart):\n"
-        f"   ARIA_API_KEY={_API_KEY}\n"
-        f"   Set this in your .env file to keep it stable.\n"
+_REQUIRE_KEY_RAW = os.environ.get("ARIA_API_KEY_REQUIRED")
+if _REQUIRE_KEY_RAW is None:
+    _REQUIRE_KEY_RAW = "true" if _API_KEY else "false"
+_REQUIRE_KEY = _REQUIRE_KEY_RAW.lower() in ("true", "1", "yes")
+
+if _REQUIRE_KEY and not _API_KEY:
+    raise RuntimeError(
+        "ARIA_API_KEY_REQUIRED is true but ARIA_API_KEY is not set. "
+        "Set ARIA_API_KEY or disable auth with ARIA_API_KEY_REQUIRED=false."
     )
+
+if not _REQUIRE_KEY:
+    logger.warning("API key auth disabled (ARIA_API_KEY_REQUIRED=false)")
 
 # Paths exempt from auth (health check, static assets, CORS preflight)
 _PUBLIC_PREFIXES = ("/assets", "/favicon")
@@ -34,9 +43,14 @@ class ApiKeyMiddleware(BaseHTTPMiddleware):
         path = request.url.path
 
         # Exempt public paths
+        if not path.startswith("/api/"):
+            return await call_next(request)
         if path in _PUBLIC_EXACT:
             return await call_next(request)
         if any(path.startswith(p) for p in _PUBLIC_PREFIXES):
+            return await call_next(request)
+
+        if not _REQUIRE_KEY:
             return await call_next(request)
 
         # Extract key from X-API-Key header first, then Authorization: Bearer

@@ -1,4 +1,4 @@
-export type SourceCategory = "web" | "academic" | "social" | "media" | "data" | "osint";
+export type SourceCategory = "web" | "academic" | "social" | "media" | "data";
 export type SourceGroup = "standard" | "advanced";
 
 export interface SourceCredentialField {
@@ -21,12 +21,12 @@ export interface SourceDef {
 
 export const SOURCES: SourceDef[] = [
   // Web — standard
-  { id: "web", name: "Web Search", category: "web", group: "standard", description: "General web search via search API", icon: "🌐",
-    credentials: [{ key: "SEARCH_API_KEY", label: "Search API Key", placeholder: "sk-...", required: true, type: "password" }] },
+  { id: "web", name: "Web Search", category: "web", group: "standard", description: "General web search via DuckDuckGo fallback or SerpAPI", icon: "🌐",
+    credentials: [{ key: "SERPAPI_KEY", label: "SerpAPI Key", placeholder: "...", required: false, type: "password" }] },
   { id: "reddit", name: "Reddit", category: "web", group: "standard", description: "Posts and comments from subreddits", icon: "🟠",
     credentials: [
-      { key: "REDDIT_CLIENT_ID", label: "Client ID", placeholder: "...", required: true, type: "text" },
-      { key: "REDDIT_CLIENT_SECRET", label: "Client Secret", placeholder: "...", required: true, type: "password" },
+      { key: "REDDIT_CLIENT_ID", label: "Client ID", placeholder: "...", required: false, type: "text" },
+      { key: "REDDIT_CLIENT_SECRET", label: "Client Secret", placeholder: "...", required: false, type: "password" },
     ] },
   { id: "hackernews", name: "Hacker News", category: "web", group: "standard", description: "Top stories and discussions", icon: "🔶",
     credentials: [] },
@@ -47,7 +47,7 @@ export const SOURCES: SourceDef[] = [
   { id: "government", name: "Government", category: "web", group: "standard", description: "Official government publications", icon: "🏛️",
     credentials: [] },
   { id: "notion", name: "Notion", category: "web", group: "standard", description: "Pages and databases from your Notion workspace", icon: "📝",
-    credentials: [{ key: "NOTION_API_KEY", label: "Integration Token", placeholder: "secret_...", required: true, type: "password" }] },
+    credentials: [{ key: "NOTION_TOKEN", label: "Integration Token", placeholder: "secret_...", required: true, type: "password" }] },
   // Academic — standard
   { id: "arxiv", name: "arXiv", category: "academic", group: "standard", description: "Preprints in physics, math, CS, biology", icon: "🎓",
     credentials: [] },
@@ -63,10 +63,8 @@ export const SOURCES: SourceDef[] = [
   // Social — standard
   { id: "twitter", name: "Twitter / X", category: "social", group: "standard", description: "Tweets and threads", icon: "𝕏",
     credentials: [{ key: "TWITTER_BEARER_TOKEN", label: "Bearer Token", placeholder: "AAAA...", required: true, type: "password" }] },
-  { id: "linkedin", name: "LinkedIn", category: "social", group: "standard", description: "Professional posts and articles", icon: "💼",
-    credentials: [{ key: "LINKEDIN_ACCESS_TOKEN", label: "Access Token", placeholder: "...", required: true, type: "password" }] },
   { id: "slack", name: "Slack", category: "social", group: "standard", description: "Channel messages (requires bot token)", icon: "💬",
-    credentials: [{ key: "SLACK_BOT_TOKEN", label: "Bot Token", placeholder: "xoxb-...", required: true, type: "password" }] },
+    credentials: [{ key: "SLACK_TOKEN", label: "Bot Token", placeholder: "xoxb-...", required: true, type: "password" }] },
   // Media — standard
   { id: "youtube", name: "YouTube", category: "media", group: "standard", description: "Video transcripts and metadata", icon: "▶️",
     credentials: [{ key: "YOUTUBE_API_KEY", label: "API Key", placeholder: "AIza...", required: true, type: "password" }] },
@@ -106,34 +104,9 @@ export const SOURCES: SourceDef[] = [
     description: "Public posts from mastodon.social — decentralised social network", icon: "🐘",
     credentials: [{ key: "MASTODON_ACCESS_TOKEN", label: "Access Token (optional)", placeholder: "...", required: false, type: "password" }] },
 
-  // ── Advanced (OSINT / Cybersecurity) — hidden by default ──────────────────
-  { id: "shodan", name: "Shodan", category: "osint", group: "advanced",
-    description: "Internet-connected device and service discovery", icon: "📡",
-    credentials: [{ key: "SHODAN_API_KEY", label: "API Key", placeholder: "...", required: true, type: "password" }] },
-  { id: "censys", name: "Censys", category: "osint", group: "advanced",
-    description: "Internet-wide device and certificate scanning", icon: "🔍",
-    credentials: [
-      { key: "CENSYS_API_ID", label: "API ID", placeholder: "...", required: true, type: "text" },
-      { key: "CENSYS_API_SECRET", label: "API Secret", placeholder: "...", required: true, type: "password" },
-    ] },
-  { id: "virustotal", name: "VirusTotal", category: "osint", group: "advanced",
-    description: "Malware and URL threat intelligence", icon: "🦠",
-    credentials: [{ key: "VIRUSTOTAL_API_KEY", label: "API Key", placeholder: "...", required: true, type: "password" }] },
-  { id: "haveibeenpwned", name: "HaveIBeenPwned", category: "osint", group: "advanced",
-    description: "Data breach and credential exposure lookup", icon: "🔓",
-    credentials: [{ key: "HIBP_API_KEY", label: "API Key", placeholder: "...", required: true, type: "password" }] },
-  { id: "whoxy", name: "Whoxy", category: "osint", group: "advanced",
-    description: "WHOIS history and reverse domain lookup", icon: "🌐",
-    credentials: [{ key: "WHOXY_API_KEY", label: "API Key", placeholder: "...", required: true, type: "password" }] },
-  { id: "hunter", name: "Hunter.io", category: "osint", group: "advanced",
-    description: "Email finder and company domain search", icon: "📧",
-    credentials: [{ key: "HUNTER_API_KEY", label: "API Key", placeholder: "...", required: true, type: "password" }] },
-  { id: "social_searcher", name: "Social Searcher", category: "osint", group: "advanced",
-    description: "Cross-platform social media monitoring", icon: "📊",
-    credentials: [{ key: "SOCIAL_SEARCHER_API_KEY", label: "API Key", placeholder: "...", required: false, type: "password" }] },
   // Jobs Boards — advanced (niche, off by default)
   { id: "jobs_boards", name: "Jobs Boards", category: "data", group: "advanced",
-    description: "Job listings from LinkedIn, Indeed, and others", icon: "💼",
+    description: "Job listings from Adzuna and public job-board search", icon: "💼",
     credentials: [] },
 ];
 
@@ -143,7 +116,6 @@ export const SOURCE_CATEGORIES: { id: SourceCategory; label: string }[] = [
   { id: "social", label: "Social" },
   { id: "media", label: "Media" },
   { id: "data", label: "Data" },
-  { id: "osint", label: "OSINT" },
 ];
 
 export function sourcesByCategory(cat: SourceCategory): SourceDef[] {

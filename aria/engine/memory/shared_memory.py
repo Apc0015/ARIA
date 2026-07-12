@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import threading
 from typing import Any, Optional
 
 
@@ -20,6 +21,7 @@ class SharedMemory:
         self._seen_urls: set[str] = set()
         self._seen_fingerprints: set[str] = set()
         self._redis = None
+        self._lock = threading.Lock()
 
         if backend == "redis" and redis_url:
             self._init_redis(redis_url)
@@ -64,17 +66,22 @@ class SharedMemory:
         Returns:
             True if the URL is new, False if already seen.
         """
-        normalized = url.strip().lower()
+        from aria.utils.url import normalize_url
+
+        normalized = normalize_url(url).lower()
+        if not normalized:
+            return False
         url_hash = hashlib.sha256(normalized.encode()).hexdigest()
 
         if self._redis:
             added = self._redis.sadd("aria:seen_urls", url_hash)
             return bool(added)
 
-        if url_hash in self._seen_urls:
-            return False
-        self._seen_urls.add(url_hash)
-        return True
+        with self._lock:
+            if url_hash in self._seen_urls:
+                return False
+            self._seen_urls.add(url_hash)
+            return True
 
     def add_fingerprint(self, fp: str) -> bool:
         """Register a content fingerprint as seen.
@@ -89,15 +96,17 @@ class SharedMemory:
             added = self._redis.sadd("aria:seen_fingerprints", fp)
             return bool(added)
 
-        if fp in self._seen_fingerprints:
-            return False
-        self._seen_fingerprints.add(fp)
-        return True
+        with self._lock:
+            if fp in self._seen_fingerprints:
+                return False
+            self._seen_fingerprints.add(fp)
+            return True
 
     def clear(self) -> None:
         """Clear all tracked state."""
-        self._store.clear()
-        self._seen_urls.clear()
-        self._seen_fingerprints.clear()
+        with self._lock:
+            self._store.clear()
+            self._seen_urls.clear()
+            self._seen_fingerprints.clear()
         if self._redis:
             self._redis.delete("aria:seen_urls", "aria:seen_fingerprints")

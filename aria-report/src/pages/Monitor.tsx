@@ -1,26 +1,72 @@
 import { useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
+import { Play } from "lucide-react";
 import { PageTopbar } from "@/components/layout/PageTopbar";
 import { GlassCard } from "@/components/glass/GlassCard";
 import { NumberTicker } from "@/components/glass/NumberTicker";
 import { StatusDot } from "@/components/glass/StatusDot";
 import { Progress } from "@/components/ui/progress";
+import { Button } from "@/components/ui/button";
+import { RunRow } from "@/components/shared/RunRow";
 import { useRun, useRunDocuments } from "@/hooks/useRun";
+import { useRuns } from "@/hooks/useRuns";
 import { SOURCES } from "@/lib/sources";
 
 export default function Monitor() {
   const { runId } = useParams<{ runId: string }>();
   const navigate = useNavigate();
-  const { data: run } = useRun(runId!, true);
-  const { data: docsData } = useRunDocuments(runId!, true);
+  const { data: runsData, isLoading: runsLoading } = useRuns();
+  const { data: run } = useRun(runId ?? "", Boolean(runId));
+  const { data: docsData } = useRunDocuments(runId ?? "", Boolean(runId));
 
   useEffect(() => {
-    if (run?.status === "completed" || run?.status === "failed") {
+    if (runId && (run?.status === "completed" || run?.status === "failed")) {
       const t = setTimeout(() => navigate(`/report/${runId}`), 1500);
       return () => clearTimeout(t);
     }
   }, [run?.status, runId, navigate]);
+
+  if (!runId) {
+    const runs = runsData?.runs ?? [];
+    const activeRuns = runs.filter((r) => r.status === "running" || r.status === "pending");
+    const shownRuns = activeRuns.length ? activeRuns : runs.slice(0, 8);
+
+    return (
+      <div className="flex flex-col h-full overflow-hidden">
+        <PageTopbar
+          title="Monitor"
+          subtitle={activeRuns.length ? `${activeRuns.length} active run${activeRuns.length === 1 ? "" : "s"}` : "Recent run activity"}
+          action={
+            <Button
+              size="sm"
+              className="bg-aria-brand hover:bg-aria-accent text-white text-[11px] h-7 px-3 brand-glow"
+              onClick={() => navigate("/launch")}
+            >
+              <Play size={11} className="mr-1.5" /> New Run
+            </Button>
+          }
+        />
+
+        <div className="flex-1 overflow-y-auto p-5 pb-16 md:pb-5 space-y-3">
+          {runsLoading ? (
+            [1, 2, 3].map((i) => <div key={i} className="glass rounded-lg h-14 animate-pulse" />)
+          ) : shownRuns.length === 0 ? (
+            <GlassCard className="p-8 text-center">
+              <p className="text-[13px] font-[510] text-aria-text2">No runs to monitor</p>
+              <p className="mt-1 text-[11px] text-aria-text4">Start a run to see live collection and cleaning progress.</p>
+            </GlassCard>
+          ) : (
+            <div className="space-y-2">
+              {shownRuns.map((run) => (
+                <RunRow key={run.run_id} run={run} />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   const docs = docsData?.documents ?? [];
   const totalDocs = docsData?.total ?? 0;

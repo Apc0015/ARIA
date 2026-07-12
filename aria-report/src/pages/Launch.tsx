@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
-import { api } from "@/lib/api";
+import { api, ensureApiKey, getApiKey } from "@/lib/api";
 import { SOURCES, SOURCE_CATEGORIES, sourcesByCategory, advancedSources } from "@/lib/sources";
 import { toast } from "sonner";
 import type { SourceCategory } from "@/lib/sources";
@@ -50,13 +50,37 @@ interface DirectorSession {
 // "director" → Research Director conversation
 // "config" → source/depth config (existing form)
 type Phase = "topic" | "director" | "config";
+type LaunchMode = "guided" | "manual" | "yaml";
+
+const LAUNCH_MODES: Array<{
+  id: LaunchMode;
+  label: string;
+  description: string;
+}> = [
+  {
+    id: "guided",
+    label: "Guided",
+    description: "Research Director asks clarifying questions before launch.",
+  },
+  {
+    id: "manual",
+    label: "Manual",
+    description: "You choose depth and sources without Director overrides.",
+  },
+  {
+    id: "yaml",
+    label: "YAML",
+    description: "Your mission file is used directly as the run contract.",
+  },
+];
 
 // ── API helpers ───────────────────────────────────────────────────────────────
 
 async function startDirectorSession(topic: string): Promise<DirectorSession> {
+  await ensureApiKey().catch(() => "");
   const res = await fetch("/api/director/session", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(getApiKey() ? { "X-API-Key": getApiKey() } : {}) },
     body: JSON.stringify({ topic }),
   });
   if (!res.ok) throw new Error(await res.text());
@@ -67,9 +91,10 @@ async function sendDirectorAnswer(
   sessionId: string,
   answer: string
 ): Promise<DirectorSession> {
+  await ensureApiKey().catch(() => "");
   const res = await fetch(`/api/director/${sessionId}/answer`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(getApiKey() ? { "X-API-Key": getApiKey() } : {}) },
     body: JSON.stringify({ answer }),
   });
   if (!res.ok) throw new Error(await res.text());
@@ -83,6 +108,7 @@ export default function Launch() {
 
   // Shared
   const [phase, setPhase] = useState<Phase>("topic");
+  const [launchMode, setLaunchMode] = useState<LaunchMode>("guided");
   const [topic, setTopic] = useState("");
 
   // Director state
@@ -115,15 +141,25 @@ export default function Launch() {
       });
 
       const resolvedTopic =
-        (directorBrief?.resolved_topic as string) || topic;
+        ((launchMode === "guided" ? directorBrief?.resolved_topic : null) as string | null)
+        || topic.trim()
+        || "Mission YAML run";
+
+      if (missionYaml.trim()) {
+        return api.runs.start({
+          topic: topic.trim() || undefined,
+          mission_yaml: missionYaml,
+          launch_mode: "yaml",
+        });
+      }
 
       return api.runs.start({
         topic: resolvedTopic,
         depth_level: depth as 1 | 2 | 3 | 4 | 5,
         free_sources,
         auth_sources,
-        ...(sessionId ? { director_session_id: sessionId } : {}),
-        ...(missionYaml.trim() ? { mission_yaml: missionYaml } : {}),
+        launch_mode: launchMode,
+        ...(launchMode === "guided" && sessionId ? { director_session_id: sessionId } : {}),
       });
     },
     onSuccess: (run) => {
@@ -136,7 +172,14 @@ export default function Launch() {
   // ── Handlers ──────────────────────────────────────────────────────────────
 
   async function handleTopicSubmit() {
-    if (!topic.trim()) return;
+    if (!topic.trim() && launchMode !== "yaml") return;
+    if (launchMode !== "guided") {
+      setSessionId(null);
+      setCurrentQuestion(null);
+      setDirectorBrief(null);
+      setPhase("config");
+      return;
+    }
     setDirectorLoading(true);
     try {
       const session = await startDirectorSession(topic.trim());
@@ -149,8 +192,16 @@ export default function Launch() {
         setCurrentQuestion(session.question);
         setPhase("director");
       }
-    } catch {
-      // Director unavailable — skip to config
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.startsWith("401")) {
+        toast.error("API authentication failed. Check your API key in Settings.");
+      } else if (/^5\d\d/.test(msg)) {
+        toast.error("Director service unavailable. Starting in manual mode.");
+      } else {
+        // Network error or unexpected — silently fall through (director is optional)
+        console.warn("Director session failed:", msg);
+      }
       setPhase("config");
     } finally {
       setDirectorLoading(false);
@@ -170,7 +221,15 @@ export default function Launch() {
       } else {
         setCurrentQuestion(session.question);
       }
-    } catch {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.startsWith("401")) {
+        toast.error("API authentication failed. Check your API key in Settings.");
+      } else if (/^5\d\d/.test(msg)) {
+        toast.error("Director service unavailable.");
+      } else {
+        console.warn("Director answer failed:", msg);
+      }
       setPhase("config");
     } finally {
       setDirectorLoading(false);
@@ -182,6 +241,11 @@ export default function Launch() {
   }
 
   const activeCount = Object.values(enabledSources).filter(Boolean).length;
+  const hasMissionYaml = Boolean(missionYaml.trim());
+  const canLaunch =
+    launchMode === "yaml" || hasMissionYaml
+      ? hasMissionYaml && !launch.isPending
+      : Boolean(topic.trim()) && activeCount > 0 && !launch.isPending;
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -193,6 +257,37 @@ export default function Launch() {
         {/* ── Phase: topic input ───────────────────────────────────────── */}
         {phase === "topic" && (
           <>
+            <GlassCard className="p-3">
+              <div className="grid grid-cols-3 gap-2" role="group" aria-label="Launch mode">
+                {LAUNCH_MODES.map((mode) => {
+                  const active = launchMode === mode.id;
+                  return (
+                    <button
+                      key={mode.id}
+                      type="button"
+                      onClick={() => {
+                        setLaunchMode(mode.id);
+                        if (mode.id === "yaml") setShowYaml(true);
+                      }}
+                      className={`min-h-[72px] rounded-lg border px-2 py-2 text-left transition-all ${
+                        active
+                          ? "border-aria-accent/50 bg-aria-accent/[0.10]"
+                          : "border-white/[0.06] bg-transparent hover:border-aria-accent/30"
+                      }`}
+                      aria-pressed={active}
+                    >
+                      <span className={`block text-[12px] font-[590] ${active ? "text-aria-accent" : "text-aria-text2"}`}>
+                        {mode.label}
+                      </span>
+                      <span className="mt-1 block text-[10px] leading-snug text-aria-text4">
+                        {mode.description}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </GlassCard>
+
             <GlassCard className="p-4 space-y-2">
               <Label className="text-[11px] font-[510] text-aria-text4 uppercase tracking-widest">
                 Research Topic
@@ -215,19 +310,22 @@ export default function Launch() {
             <Button
               className="w-full h-11 bg-aria-brand hover:bg-aria-accent text-white font-[510] brand-glow disabled:opacity-40"
               onClick={handleTopicSubmit}
-              disabled={!topic.trim() || directorLoading}
+              disabled={(launchMode !== "yaml" && !topic.trim()) || directorLoading}
             >
               {directorLoading ? (
                 "Thinking…"
               ) : (
                 <>
-                  <ArrowRight size={14} className="mr-2" /> Start Research Planning
+                  <ArrowRight size={14} className="mr-2" />
+                  {launchMode === "guided" ? "Start Research Planning" : "Continue to Configuration"}
                 </>
               )}
             </Button>
 
             <p className="text-center text-[12px] text-aria-text4">
-              ARIA will ask a few questions to understand what you need before searching.
+              {launchMode === "guided"
+                ? "ARIA will ask a few questions to understand what you need before searching."
+                : "Manual and YAML modes launch exactly from your selected settings."}
             </p>
           </>
         )}
@@ -375,13 +473,55 @@ export default function Launch() {
               </GlassCard>
             )}
 
+            <GlassCard className="p-4 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-[510] text-aria-text4 uppercase tracking-widest">
+                    Launch Mode
+                  </p>
+                  <p className="mt-1 text-[12px] text-aria-text3">
+                    {LAUNCH_MODES.find((mode) => mode.id === launchMode)?.description}
+                  </p>
+                </div>
+                <span className="text-[10px] font-[590] uppercase tracking-widest text-aria-accent border border-aria-accent/25 bg-aria-accent/[0.08] px-2 py-1 rounded">
+                  {launchMode}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-2" role="group" aria-label="Launch mode">
+                {LAUNCH_MODES.map((mode) => {
+                  const active = launchMode === mode.id;
+                  return (
+                    <button
+                      key={mode.id}
+                      type="button"
+                      onClick={() => {
+                        setLaunchMode(mode.id);
+                        if (mode.id === "yaml") setShowYaml(true);
+                      }}
+                      className={`rounded-md border px-2 py-1.5 text-[11px] font-[510] transition-colors ${
+                        active
+                          ? "border-aria-accent/50 bg-aria-accent/[0.10] text-aria-accent"
+                          : "border-white/[0.06] text-aria-text4 hover:text-aria-text2"
+                      }`}
+                      aria-pressed={active}
+                    >
+                      {mode.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </GlassCard>
+
             {/* Mission YAML toggle */}
             <GlassCard className="p-4">
               <button
-                onClick={() => setShowYaml((v) => !v)}
+                onClick={() => {
+                  setShowYaml((v) => !v);
+                  setLaunchMode("yaml");
+                }}
                 className="w-full flex items-center justify-between text-[13px] font-[510] text-aria-text2"
               >
-                Mission YAML (optional override)
+                Mission YAML {launchMode === "yaml" ? "(required)" : "(optional override)"}
                 {showYaml ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
               </button>
               {showYaml && (
@@ -432,7 +572,7 @@ export default function Launch() {
                 );
               })}
 
-              {/* Advanced Sources (OSINT / Cybersecurity) — collapsed by default */}
+              {/* Advanced Sources — collapsed by default */}
               <div className="border-t border-white/[0.06] pt-3">
                 <button
                   type="button"
@@ -440,7 +580,7 @@ export default function Launch() {
                   className="flex w-full items-center justify-between text-[11px] text-aria-text4 hover:text-aria-text2 transition-colors"
                 >
                   <span className="font-[510] uppercase tracking-widest">
-                    Advanced — Cybersecurity &amp; OSINT
+                    Advanced Sources
                   </span>
                   {showAdvancedSources ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                 </button>
@@ -498,7 +638,7 @@ export default function Launch() {
             <Button
               className="w-full h-11 bg-aria-brand hover:bg-aria-accent text-white font-[510] brand-glow disabled:opacity-40"
               onClick={() => launch.mutate()}
-              disabled={!topic.trim() || launch.isPending}
+              disabled={!canLaunch}
             >
               {launch.isPending ? (
                 "Starting…"

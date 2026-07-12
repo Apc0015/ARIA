@@ -16,7 +16,7 @@ logger = logging.getLogger("aria")
 _API_URL = "https://api.base-search.net/cgi-bin/BaseHttpSearchInterface.fcgi"
 
 
-class BASESearchCollector(BaseCollector):
+class BaseSearchCollector(BaseCollector):
     """Searches BASE (Bielefeld Academic Search Engine) for open access papers.
 
     No API key required. 300M+ academic documents indexed.

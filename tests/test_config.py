@@ -18,7 +18,7 @@ def test_config_defaults():
     assert cfg.kb_enabled is True
     assert cfg.gap_detection_enabled is True
     assert cfg.knowledge_graph_enabled is True
-    assert cfg.semantic_dedup_enabled is True
+    assert cfg.semantic_dedup_enabled is False  # opt-in; default False
     assert cfg.smart_query_planning is True
     assert cfg.image_extraction_enabled is True
     assert cfg.streaming_clean is False

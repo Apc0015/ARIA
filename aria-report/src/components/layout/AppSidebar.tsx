@@ -25,6 +25,8 @@ function SidebarItem({ to, icon: Icon, label, exact }: typeof NAV[0]) {
         <NavLink
           to={to}
           end={exact}
+          aria-label={label}
+          title={label}
           className={({ isActive }) =>
             cn(
               "relative w-9 h-9 rounded-[6px] flex items-center justify-center",
@@ -81,6 +83,8 @@ export function AppSidebar({ theme, onToggleTheme }: AppSidebarProps) {
             <TooltipTrigger asChild>
               <button
                 onClick={onToggleTheme}
+                aria-label={themeLabel}
+                title={themeLabel}
                 className="w-9 h-9 rounded-[6px] flex items-center justify-center text-aria-text4 hover:text-aria-text2 hover:bg-[rgba(255,255,255,0.03)] transition-all duration-100"
               >
                 <ThemeIcon size={14} strokeWidth={1.75} />
@@ -102,6 +106,7 @@ export function AppSidebar({ theme, onToggleTheme }: AppSidebarProps) {
             key={to}
             to={to}
             end={exact}
+            aria-label={label}
             className={({ isActive }) =>
               cn(
                 "flex flex-col items-center gap-0.5 px-3 py-1 rounded-lg transition-colors",
@@ -115,6 +120,7 @@ export function AppSidebar({ theme, onToggleTheme }: AppSidebarProps) {
         ))}
         <button
           onClick={onToggleTheme}
+          aria-label={themeLabel}
           className="flex flex-col items-center gap-0.5 px-3 py-1 rounded-lg text-aria-text4 hover:text-aria-text2 transition-colors"
         >
           <ThemeIcon size={17} strokeWidth={1.75} />

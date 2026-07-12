@@ -26,7 +26,6 @@ _COLLECTOR_REGISTRY: dict[str, tuple[str, str, bool]] = {
     "substack":          ("aria.engine.collectors.web.substack",      "SubstackCollector",       False),
     "rss":               ("aria.engine.collectors.web.rss",           "RSSCollector",            False),
     "twitter":           ("aria.engine.collectors.social.twitter",       "TwitterCollector",        False),
-    "linkedin":          ("aria.engine.collectors.social.linkedin",      "LinkedInCollector",       False),
     "slack":             ("aria.engine.collectors.social.slack",         "SlackCollector",          False),
     "zotero":            ("aria.engine.collectors.knowledge.zotero",        "ZoteroCollector",         False),
     "notion":            ("aria.engine.collectors.knowledge.notion",        "NotionCollector",         False),

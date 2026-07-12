@@ -38,8 +38,3 @@ data/vectors/*
 !data/vectors/.gitkeep
 data/logs/*
 !data/logs/.gitkeep
-
-aria_studio/.dart_tool/
-aria_studio/build/
-aria_studio/.flutter-plugins
-aria_studio/.flutter-plugins-dependencies

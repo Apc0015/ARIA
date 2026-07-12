@@ -72,7 +72,9 @@ def generate_report(
         methodology=methodology or {},
     )
 
-    report_path.write_text(html, encoding="utf-8")
+    tmp_path = report_path.with_suffix(report_path.suffix + ".tmp")
+    tmp_path.write_text(html, encoding="utf-8")
+    tmp_path.replace(report_path)
     return str(report_path)
 
 

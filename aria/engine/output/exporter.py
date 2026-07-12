@@ -20,8 +20,7 @@ class Exporter:
     def export_json(self, documents: list[dict], filename: str = "documents.json") -> Path:
         """Generic JSON export — alias used by tests and direct callers."""
         path = self._output_dir / filename
-        with path.open("w", encoding="utf-8") as f:
-            json.dump(documents, f, indent=2, ensure_ascii=False, default=str)
+        _atomic_write_json(path, documents)
         return path
 
     def export_raw_json(self, documents: list[dict]) -> Path:
@@ -34,8 +33,7 @@ class Exporter:
             Path to the exported file.
         """
         path = self._output_dir / "raw_documents.json"
-        with path.open("w", encoding="utf-8") as f:
-            json.dump(documents, f, indent=2, ensure_ascii=False, default=str)
+        _atomic_write_json(path, documents)
         return path
 
     def export_clean_json(self, documents: list[dict]) -> Path:
@@ -48,8 +46,7 @@ class Exporter:
             Path to the exported file.
         """
         path = self._output_dir / "clean_documents.json"
-        with path.open("w", encoding="utf-8") as f:
-            json.dump(documents, f, indent=2, ensure_ascii=False, default=str)
+        _atomic_write_json(path, documents)
         return path
 
     def export_raw_csv(self, documents: list[dict]) -> Path:
@@ -63,7 +60,7 @@ class Exporter:
         """
         path = self._output_dir / "raw_documents.csv"
         if not documents:
-            path.write_text("url,title,platform,source_type,word_count,text\n", encoding="utf-8")
+            _atomic_write_text(path, "url,title,platform,source_type,word_count,text\n")
             return path
 
         priority_keys = [
@@ -76,12 +73,14 @@ class Exporter:
                 if k not in all_keys and k != "metadata":
                     all_keys.append(k)
 
-        with path.open("w", encoding="utf-8", newline="") as f:
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        with tmp_path.open("w", encoding="utf-8", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=all_keys, extrasaction="ignore")
             writer.writeheader()
             for doc in documents:
                 flat_doc = {k: _flatten_value(doc.get(k)) for k in all_keys}
                 writer.writerow(flat_doc)
+        tmp_path.replace(path)
         return path
 
     def export_clean_csv(self, documents: list[dict]) -> Path:
@@ -95,7 +94,7 @@ class Exporter:
         """
         path = self._output_dir / "clean_documents.csv"
         if not documents:
-            path.write_text("", encoding="utf-8")
+            _atomic_write_text(path, "")
             return path
 
         # Collect all keys across all docs (maintaining a stable order)
@@ -110,12 +109,14 @@ class Exporter:
                 if k not in all_keys and k != "metadata":
                     all_keys.append(k)
 
-        with path.open("w", encoding="utf-8", newline="") as f:
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        with tmp_path.open("w", encoding="utf-8", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=all_keys, extrasaction="ignore")
             writer.writeheader()
             for doc in documents:
                 flat_doc = {k: _flatten_value(doc.get(k)) for k in all_keys}
                 writer.writerow(flat_doc)
+        tmp_path.replace(path)
         return path
 
     def export_markdown(self, documents: list[dict], topic: str = "") -> Path:
@@ -183,7 +184,7 @@ class Exporter:
             lines.append("---")
             lines.append("")
 
-        path.write_text("\n".join(lines), encoding="utf-8")
+        _atomic_write_text(path, "\n".join(lines))
         return path
 
     def export_zip(self, export_paths: dict) -> Path:
@@ -197,10 +198,19 @@ class Exporter:
         """
         zip_path = self._output_dir / "research_export.zip"
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            seen_paths: set[Path] = set()
+            seen_arcnames: set[str] = set()
             for name, file_path in export_paths.items():
-                p = Path(file_path)
-                if p.exists():
-                    zf.write(p, arcname=p.name)
+                p = Path(file_path).resolve()
+                if not p.exists() or p in seen_paths:
+                    continue
+                arcname = p.name
+                # Disambiguate if two different files share the same basename
+                if arcname in seen_arcnames:
+                    arcname = f"{name}_{arcname}"
+                seen_paths.add(p)
+                seen_arcnames.add(arcname)
+                zf.write(p, arcname=arcname)
         return zip_path
 
     def export_all(
@@ -246,6 +256,31 @@ class Exporter:
 
         return paths
 
+    def validate_exports(
+        self,
+        export_paths: dict[str, str],
+        raw_docs_count: int,
+        clean_docs_count: int,
+    ) -> tuple[dict[str, str], list[str]]:
+        """Validate exported files exist and are non-empty when expected."""
+        valid: dict[str, str] = {}
+        issues: list[str] = []
+
+        for key, path_str in export_paths.items():
+            path = Path(path_str)
+            if not path.exists():
+                issues.append(f"missing:{key}")
+                continue
+            if key in {"raw_json", "raw_csv"} and raw_docs_count > 0 and path.stat().st_size == 0:
+                issues.append(f"empty:{key}")
+                continue
+            if key in {"clean_json", "clean_csv", "markdown"} and clean_docs_count > 0 and path.stat().st_size == 0:
+                issues.append(f"empty:{key}")
+                continue
+            valid[key] = str(path)
+
+        return valid, issues
+
 
 def _flatten_value(value: Any) -> str:
     """Convert a value to a CSV-safe string."""
@@ -254,3 +289,16 @@ def _flatten_value(value: Any) -> str:
     if isinstance(value, (list, dict)):
         return json.dumps(value, ensure_ascii=False)
     return str(value)
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    tmp_path.write_text(content, encoding="utf-8")
+    tmp_path.replace(path)
+
+
+def _atomic_write_json(path: Path, data: Any) -> None:
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    with tmp_path.open("w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False, default=str)
+    tmp_path.replace(path)

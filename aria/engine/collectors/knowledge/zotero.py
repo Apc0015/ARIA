@@ -57,12 +57,16 @@ class ZoteroCollector(BaseCollector):
         library_type: str = "user",
         max_items: int = 500,
     ) -> None:
-        self._mode = mode
-        self._library_id = library_id or os.getenv("ZOTERO_LIBRARY_ID", "")
-        self._api_key = api_key or os.getenv("ZOTERO_API_KEY", "")
+        self._library_id = library_id or os.getenv("ZOTERO_LIBRARY_ID", "").strip().rstrip("/")
+        self._api_key = api_key or os.getenv("ZOTERO_API_KEY", "").strip()
         self._collection_key = collection_key
-        self._library_type = library_type
+        self._library_type = os.getenv("ZOTERO_LIBRARY_TYPE", library_type)
         self._max_items = max_items
+        # Auto-detect cloud mode when API key + library ID are present
+        if mode == "local" and self._library_id and self._api_key:
+            self._mode = "cloud"
+        else:
+            self._mode = mode
 
     async def validate(self) -> bool:
         if self._mode == "local":

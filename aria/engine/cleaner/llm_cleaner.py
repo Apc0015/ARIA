@@ -97,24 +97,36 @@ class LLMCleaner:
         instructions: str,
         output_schema: dict,
         concurrency: int = 5,
+        on_progress: Optional[Any] = None,
     ) -> list[dict]:
         """Clean a batch of documents with bounded concurrency.
 
         Args:
-            docs: List of raw document dicts.
+            docs:         List of raw document dicts.
             instructions: Cleaning instructions from the mission.
             output_schema: Output schema dict.
-            concurrency: Max parallel LLM calls.
+            concurrency:  Max parallel LLM calls.
+            on_progress:  Optional async callable(completed: int, total: int)
+                          called after each document finishes cleaning.
 
         Returns:
-            List of cleaned document dicts.
+            List of cleaned document dicts in the same order as input.
         """
         sem = asyncio.Semaphore(concurrency)
+        total = len(docs)
+        completed = 0
 
         async def _clean_one(doc: dict) -> dict:
+            nonlocal completed
             async with sem:
                 result = await self.clean_document(doc, instructions, output_schema)
-                await asyncio.sleep(0.1)  # small backoff
+                await asyncio.sleep(0.1)  # small backoff between calls
+                completed += 1
+                if on_progress:
+                    try:
+                        await on_progress(completed, total)
+                    except Exception:
+                        pass
                 return result
 
         tasks = [_clean_one(d) for d in docs]

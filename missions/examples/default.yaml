@@ -16,7 +16,7 @@ collection:
     #     stackoverflow, medium, devto, substack, rss,
     #     news, government, github, multilingual
     #   Auth-gated (silently skipped if credentials missing):
-    #     twitter, linkedin, slack, notion, podcast, vimeo, zotero,
+    #     twitter, slack, notion, podcast, vimeo, zotero,
     #     academic_platforms
     enabled: [web, pdf, academic, youtube, news, hackernews, wikipedia]
     priority:
@@ -38,7 +38,6 @@ collection:
       substack:           2
       rss:                2
       twitter:            5
-      linkedin:           4
       slack:              3
       notion:             3
       podcast:            3

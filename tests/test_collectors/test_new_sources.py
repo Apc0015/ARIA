@@ -233,7 +233,7 @@ async def test_propublica_nonprofit_yields_doc():
 
 @pytest.mark.asyncio
 async def test_base_search_yields_doc():
-    from aria.engine.collectors.academic.base_search import BASESearchCollector
+    from aria.engine.collectors.academic.base_search import BaseSearchCollector
 
     fake_resp = {
         "response": {
@@ -256,7 +256,7 @@ async def test_base_search_yields_doc():
     mock_client.get = AsyncMock(return_value=mock_resp)
 
     with patch("aria.engine.collectors.academic.base_search.httpx.AsyncClient", return_value=mock_client):
-        docs = [d async for d in BASESearchCollector().collect(["neural networks"])]
+        docs = [d async for d in BaseSearchCollector().collect(["neural networks"])]
 
     assert len(docs) == 1
     assert docs[0]["platform"] == "base_search"

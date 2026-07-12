@@ -8,6 +8,7 @@ This is what makes ARIA agentic: after initial collection, it asks
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -60,6 +61,7 @@ async def detect_gaps(
     intent: str = "",
     sub_questions: Optional[list[str]] = None,
     max_follow_up_queries: int = 10,
+    config: Any | None = None,
 ) -> dict[str, Any]:
     """
     Analyse collected documents and find research gaps.
@@ -84,7 +86,7 @@ async def detect_gaps(
         sample_titles=titles,
     )
 
-    response_text = await _call_llm(prompt)
+    response_text = await _call_llm(prompt, config=config)
     if not response_text:
         logger.debug("Gap detection: no LLM available, skipping")
         return _empty_result()
@@ -121,31 +123,43 @@ def _summarise_corpus(docs: list[dict[str, Any]]) -> dict[str, Any]:
     return {"platforms": platforms, "source_types": source_types}
 
 
-async def _call_llm(prompt: str) -> Optional[str]:
-    """Call best available LLM."""
-    ant_key = os.getenv("ANTHROPIC_API_KEY")
-    or_key = os.getenv("OPENROUTER_API_KEY")
-    oai_key = os.getenv("OPENAI_API_KEY")
+async def _call_llm(prompt: str, config: Any | None = None) -> Optional[str]:
+    """Call best available LLM — same priority order as the cleaner."""
+    from aria.engine.cleaner.llm_cleaner import _call_anthropic, _call_openai_compat
+    from aria.engine.ensemble.providers import resolve_cleaning_llm
+    from aria.engine.utils.retry import with_retry
+
+    timeout = float(getattr(config, "llm_timeout_seconds", 60.0)) if config else float(os.getenv("ARIA_LLM_TIMEOUT", "60"))
+    max_attempts = int(getattr(config, "llm_retry_max_attempts", 3)) if config else int(os.getenv("ARIA_LLM_RETRY_MAX", "3"))
+    base_delay = float(getattr(config, "llm_retry_base_delay", 1.0)) if config else float(os.getenv("ARIA_LLM_RETRY_BASE", "1.0"))
+    max_delay = float(getattr(config, "llm_retry_max_delay", 20.0)) if config else float(os.getenv("ARIA_LLM_RETRY_MAX_DELAY", "20.0"))
 
     try:
-        if ant_key:
-            from aria.engine.cleaner.llm_cleaner import _call_anthropic
-            return await _call_anthropic(
-                prompt, "claude-3-haiku-20240307", ant_key, _GAP_SYSTEM,
-                max_tokens=1500, temperature=0.2,
+        provider, model_id, base_url, api_key = resolve_cleaning_llm(None)
+        async def _call() -> str:
+            if provider == "anthropic":
+                return await asyncio.wait_for(
+                    _call_anthropic(
+                        prompt, model_id, api_key, _GAP_SYSTEM,
+                        max_tokens=1500, temperature=0.2,
+                    ),
+                    timeout=timeout,
+                )
+            # Covers ollama, openai, openrouter, and any openai-compat provider
+            return await asyncio.wait_for(
+                _call_openai_compat(
+                    prompt, model_id, api_key, base_url,
+                    _GAP_SYSTEM, max_tokens=1500, temperature=0.2,
+                ),
+                timeout=timeout,
             )
-        elif or_key:
-            from aria.engine.cleaner.llm_cleaner import _call_openai_compat
-            return await _call_openai_compat(
-                prompt, "openai/gpt-4o-mini", or_key, "https://openrouter.ai/api/v1",
-                _GAP_SYSTEM, max_tokens=1500, temperature=0.2,
-            )
-        elif oai_key:
-            from aria.engine.cleaner.llm_cleaner import _call_openai_compat
-            return await _call_openai_compat(
-                prompt, "gpt-4o-mini", oai_key, "https://api.openai.com/v1",
-                _GAP_SYSTEM, max_tokens=1500, temperature=0.2,
-            )
+
+        return await with_retry(
+            _call,
+            max_attempts=max_attempts,
+            base_delay=base_delay,
+            max_delay=max_delay,
+        )
     except Exception as exc:
         logger.debug("Gap detection LLM call failed: %s", exc)
     return None

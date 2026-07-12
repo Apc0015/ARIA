@@ -1,4 +1,4 @@
-export type RunStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
+export type RunStatus = "queued" | "pending" | "running" | "completed" | "failed" | "cancelled";
 
 export interface Run {
   run_id: string;
@@ -39,7 +39,7 @@ export interface RunDocumentsResponse {
 }
 
 export interface StartRunPayload {
-  topic: string;
+  topic?: string;
   intent?: string;
   depth_level?: 1 | 2 | 3 | 4 | 5;
   free_sources?: Record<string, boolean>;
@@ -49,6 +49,8 @@ export interface StartRunPayload {
     output_schema?: Record<string, string>;
   };
   mission_yaml?: string;
+  launch_mode?: "guided" | "manual" | "yaml";
+  director_session_id?: string;
   ensemble_models?: string[];
   flags?: Record<string, unknown>;
 }
@@ -58,5 +60,6 @@ export interface Credentials {
 }
 
 export interface CredentialsResponse {
-  [key: string]: string | undefined;
+  platforms?: Record<string, string | undefined>;
+  [key: string]: string | Record<string, string | undefined> | undefined;
 }

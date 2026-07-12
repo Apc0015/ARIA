@@ -14,10 +14,12 @@ const stagger = { animate: { transition: { staggerChildren: 0.04 } } };
 const item = { initial: { opacity: 0, y: 6 }, animate: { opacity: 1, y: 0, transition: { duration: 0.15 } } };
 
 const CATEGORY_META: Record<string, { color: string; desc: string }> = {
-  web:      { color: "#7170ff", desc: "General web, RSS, GitHub, government sites" },
-  academic: { color: "#10b981", desc: "Research papers, preprints, reference libraries" },
-  social:   { color: "#f59e0b", desc: "Twitter/X, LinkedIn, Slack channels" },
-  media:    { color: "#06b6d4", desc: "YouTube, Vimeo, podcast transcripts" },
+  web:       { color: "#7170ff", desc: "General web, RSS, GitHub, government sites" },
+  academic:  { color: "#10b981", desc: "Research papers, preprints, reference libraries" },
+  social:    { color: "#f59e0b", desc: "Twitter/X, Slack channels" },
+  media:     { color: "#06b6d4", desc: "YouTube, Vimeo, podcast transcripts" },
+  data:      { color: "#8b5cf6", desc: "Statistical databases, economic data, government datasets" },
+  knowledge: { color: "#f97316", desc: "Reference libraries, patents, personal knowledge bases" },
 };
 
 export default function Sources() {
@@ -25,10 +27,16 @@ export default function Sources() {
   const { data: creds } = useCredentials();
   const { isEnabled, toggle } = useEnabledSources();
 
+  function credentialValue(key: string): string {
+    const flat = creds?.[key];
+    if (typeof flat === "string") return flat;
+    return creds?.platforms?.[key] ?? "";
+  }
+
   function isConfigured(sourceId: string): boolean {
     const src = SOURCES.find((s) => s.id === sourceId);
     if (!src || src.credentials.length === 0) return true;
-    return src.credentials.every((f) => !f.required || Boolean(creds?.[f.key]));
+    return src.credentials.every((f) => !f.required || Boolean(credentialValue(f.key)));
   }
 
   return (
@@ -53,7 +61,7 @@ export default function Sources() {
             </TabsList>
 
             {SOURCE_CATEGORIES.map((cat) => {
-              const meta = CATEGORY_META[cat.id];
+              const meta = CATEGORY_META[cat.id] ?? { color: "#6b7280", desc: cat.id };
               const sources = sourcesByCategory(cat.id as SourceCategory);
               const enabledCount = sources.filter((s) => isEnabled(s.id, isConfigured(s.id))).length;
 
@@ -119,6 +127,7 @@ export default function Sources() {
                               checked={enabled}
                               onCheckedChange={() => toggle(src.id, configured)}
                               className="flex-shrink-0 data-[state=checked]:bg-aria-accent mt-0.5"
+                              aria-label={`${enabled ? "Disable" : "Enable"} ${src.name}`}
                             />
                           </GlassCard>
                         </motion.div>

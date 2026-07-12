@@ -314,7 +314,7 @@ class StrategyPlanner:
     ) -> dict[str, float]:
         weights: dict[str, float] = {c: 1.0 for c in collectors}
         domain_boosts: dict[str, dict[str, float]] = {
-            "jobs":        {"jobs_boards": 2.0, "linkedin": 1.8},
+            "jobs":        {"jobs_boards": 2.0},
             "health":      {"who": 2.0, "clinical_trials": 1.8, "academic": 1.5},
             "finance":     {"world_bank": 2.0, "imf": 1.8, "fred": 1.6},
             "government":  {"intl_gov": 1.8, "government": 1.8, "un_data": 1.5},

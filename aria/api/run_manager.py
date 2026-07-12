@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -16,12 +17,14 @@ from aria.access.credentials import CredentialManager
 from aria.config import load_config
 from aria.mission import load_mission_text
 from aria.orchestrator.master import MasterOrchestrator, RunResult
+from aria.types.credentials import CredentialScope, scoped_environ
 from aria.utils.logger import configure_logging
 from aria.engine.ensemble.providers import build_provider_catalog, default_llm_source_models, describe_cleaning_brain
 
 _logger = logging.getLogger("aria")
 
 _MAX_CONCURRENT_RUNS = int(os.environ.get("ARIA_MAX_CONCURRENT_RUNS", "20"))
+_RUN_STATE_FILE = "run_state.json"
 
 # Patterns that indicate a secret leaked into an exception message.
 _SECRET_PATTERNS = (
@@ -52,6 +55,9 @@ class RunState:
     updated_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     logs: list[dict[str, Any]] = field(default_factory=list)
     stats: dict[str, Any] = field(default_factory=dict)
+    # Live counters — updated mid-run from pipeline events so clients see progress
+    docs_collected: int = 0
+    docs_cleaned: int = 0
     exports: dict[str, str] = field(default_factory=dict)
     report_path: str = ""
     documents: list[dict[str, Any]] = field(default_factory=list)
@@ -80,8 +86,7 @@ class RunManager:
         self._run_semaphore = asyncio.Semaphore(
             int(os.environ.get("ARIA_MAX_CONCURRENT_RUNS", "20"))
         )
-        # Serialize env-var mutations (auth tokens are set globally per-run)
-        self._env_lock = asyncio.Lock()
+        self._load_persisted_runs()
 
     def list_templates(self) -> list[dict[str, Any]]:
         templates: list[dict[str, Any]] = []
@@ -89,14 +94,197 @@ class RunManager:
             templates.append({"name": path.stem, "path": str(path), "content": path.read_text(encoding="utf-8")})
         return templates
 
+    @staticmethod
+    def _mask(value: str) -> str:
+        """Mask a credential value so only the first/last 4 chars are visible."""
+        if not value or len(value) < 8:
+            return "***"
+        return value[:4] + "*" * (len(value) - 8) + value[-4:]
+
     def get_credentials(self) -> dict[str, Any]:
         manager = CredentialManager(self.base_settings.credentials_file)
-        return {"platforms": manager.credentials}
+        raw = manager.credentials
+        masked = {
+            k: self._mask(v) if isinstance(v, str) and v else v
+            for k, v in raw.items()
+        }
+        return {"platforms": masked}
 
     def save_credentials(self, credentials_payload: dict[str, Any]) -> Path:
         manager = CredentialManager()
         manager.credentials = credentials_payload.get("platforms", credentials_payload)
         return manager.save(self.base_settings.credentials_file)
+
+    def _load_saved_credentials(self) -> dict[str, Any]:
+        manager = CredentialManager(self.base_settings.credentials_file)
+        return manager.credentials
+
+    def _build_credential_scope(self, payload: dict[str, Any]) -> CredentialScope:
+        """Merge env, saved UI credentials, and launch overrides for one run."""
+        env: dict[str, str] = CredentialScope.from_env().to_env()
+
+        credential_sources: list[dict[str, Any]] = []
+        saved = self._load_saved_credentials()
+        if saved:
+            credential_sources.append(saved)
+        if payload.get("credentials"):
+            credential_sources.append(payload["credentials"])
+        if payload.get("auth_tokens"):
+            credential_sources.append(payload["auth_tokens"])
+
+        zotero_cfg = payload.get("zotero_config") or {}
+        if zotero_cfg:
+            credential_sources.append(
+                {
+                    "ZOTERO_API_KEY": zotero_cfg.get("api_key"),
+                    "ZOTERO_LIBRARY_ID": str(zotero_cfg.get("library_id") or ""),
+                    "ZOTERO_LIBRARY_TYPE": zotero_cfg.get("library_type"),
+                }
+            )
+
+        for source in credential_sources:
+            env.update(CredentialScope.from_dict(source).to_env())
+
+        for provider_cfg in (self._brain_config or {}, payload.get("provider") or {}):
+            provider = (provider_cfg.get("provider") or "").strip()
+            model = (provider_cfg.get("model") or provider_cfg.get("model_id") or "").strip()
+            api_key = (provider_cfg.get("api_key") or "").strip()
+            base_url = (provider_cfg.get("base_url") or "").strip()
+            if provider:
+                env["LLM_PROVIDER"] = provider
+                prefix = provider.upper()
+                if model:
+                    env[f"{prefix}_MODEL"] = model
+                if api_key:
+                    env[f"{prefix}_API_KEY"] = api_key
+            if base_url:
+                env["OLLAMA_BASE_URL"] = base_url
+
+        return CredentialScope.from_dict(env)
+
+    def _state_path(self, state: RunState) -> Path:
+        return Path(state.output_dir) / _RUN_STATE_FILE
+
+    def _persist_state(self, state: RunState) -> None:
+        """Persist non-secret run state so API restarts keep history/downloads."""
+        if not state.output_dir:
+            return
+        path = self._state_path(state)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(asdict(state), indent=2, sort_keys=True), encoding="utf-8")
+        tmp.replace(path)
+
+    def _load_persisted_runs(self) -> None:
+        runs_dir = self.base_settings.runs_dir
+        if not runs_dir.exists():
+            return
+        for run_dir in sorted(
+            (p for p in runs_dir.iterdir() if p.is_dir()),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        ):
+            state = self._load_state_file(run_dir) or self._hydrate_run_dir(run_dir)
+            if not state:
+                continue
+            if state.status in {"queued", "pending", "running"}:
+                state.status = "failed"
+                state.stage = "interrupted"
+                state.message = "Run interrupted by API restart"
+                state.error = state.error or "API restarted before this run completed."
+                state.updated_at = datetime.now(timezone.utc).isoformat()
+                self._persist_state(state)
+            self.runs[state.run_id] = state
+
+    def _load_state_file(self, run_dir: Path) -> RunState | None:
+        path = run_dir / _RUN_STATE_FILE
+        if not path.exists():
+            return None
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            allowed = {f.name for f in fields(RunState)}
+            state_data = {k: v for k, v in data.items() if k in allowed}
+            state_data.setdefault("run_id", run_dir.name)
+            state_data.setdefault("output_dir", str(run_dir))
+            return RunState(**state_data)
+        except Exception as exc:
+            _logger.warning("Could not load run state %s: %s", path, exc)
+            return None
+
+    def _hydrate_run_dir(self, run_dir: Path) -> RunState | None:
+        """Best-effort history for runs created before run_state.json existed."""
+        if not (run_dir / "raw").exists() and not (run_dir / "exports").exists():
+            return None
+
+        raw_docs = self._load_docs(
+            run_dir / "raw" / "raw_documents.jsonl",
+            run_dir / "exports" / "raw_documents.json",
+        )
+        clean_docs = self._load_docs(
+            run_dir / "clean" / "clean_documents.jsonl",
+            run_dir / "exports" / "clean_documents.json",
+        )
+
+        export_dir = run_dir / "exports"
+        export_map = {
+            "raw_json": export_dir / "raw_documents.json",
+            "raw_csv": export_dir / "raw_documents.csv",
+            "clean_json": export_dir / "clean_documents.json",
+            "clean_csv": export_dir / "clean_documents.csv",
+            "csv": export_dir / "clean_documents.csv",
+            "markdown": export_dir / "research_digest.md",
+            "html": export_dir / "report.html",
+            "zip": export_dir / "research_export.zip",
+            "knowledge_graph": export_dir / "knowledge_graph.json",
+            "images": export_dir / "images.json",
+        }
+        exports = {key: str(path) for key, path in export_map.items() if path.exists()}
+        failed_marker = run_dir / "FAILED"
+        status = "failed" if failed_marker.exists() else "completed"
+        created_at = datetime.fromtimestamp(run_dir.stat().st_mtime, timezone.utc).isoformat()
+        report_path = exports.get("markdown") or exports.get("html") or ""
+        return RunState(
+            run_id=run_dir.name,
+            status=status,
+            stage=status,
+            message="Hydrated from persisted run files",
+            created_at=created_at,
+            updated_at=created_at,
+            stats={
+                "collected": len(raw_docs),
+                "cleaned": len(clean_docs),
+                "topic": run_dir.name,
+            },
+            docs_collected=len(raw_docs),
+            docs_cleaned=len(clean_docs),
+            exports=exports,
+            report_path=report_path,
+            documents=(clean_docs or raw_docs)[:100],
+            raw_documents=raw_docs[:100],
+            error=failed_marker.read_text(encoding="utf-8")[:400] if failed_marker.exists() else None,
+            output_dir=str(run_dir),
+        )
+
+    @staticmethod
+    def _load_docs(*paths: Path, limit: int = 100) -> list[dict[str, Any]]:
+        for path in paths:
+            if not path.exists():
+                continue
+            try:
+                if path.suffix == ".jsonl":
+                    docs = []
+                    for line in path.read_text(encoding="utf-8").splitlines():
+                        if line.strip():
+                            docs.append(json.loads(line))
+                        if len(docs) >= limit:
+                            break
+                    return docs
+                data = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(data, list):
+                    return [d for d in data if isinstance(d, dict)][:limit]
+            except Exception as exc:
+                _logger.debug("Could not load run docs %s: %s", path, exc)
+        return []
 
     def validate_mission(self, mission_yaml: str) -> dict[str, Any]:
         return load_mission_text(mission_yaml)
@@ -164,6 +352,7 @@ class RunManager:
         state = RunState(run_id=run_id, mission=mission, output_dir=str(output_dir))
         async with self._lock:
             self.runs[run_id] = state
+            self._persist_state(state)
         credentials = payload.get("credentials")
         if credentials:
             self.save_credentials(credentials)
@@ -174,87 +363,57 @@ class RunManager:
 
     async def _execute_run(self, state: RunState, payload: dict[str, Any]) -> None:
         async with self._run_semaphore:  # acquire slot — released when run finishes
-            _TOKEN_ENV_MAP = {
-                "twitter_bearer_token": "TWITTER_BEARER_TOKEN",
-                "linkedin_email":       "LINKEDIN_EMAIL",
-                "linkedin_password":    "LINKEDIN_PASSWORD",
-                "notion_token":         "NOTION_TOKEN",
-                "slack_token":          "SLACK_TOKEN",
-                "vimeo_token":          "VIMEO_ACCESS_TOKEN",
-                "github_token":         "GITHUB_TOKEN",
-                "news_api_key":         "NEWS_API_KEY",
-                "gnews_api_key":        "GNEWS_API_KEY",
-            }
-            auth_tokens = payload.get("auth_tokens", {})
-            # Snapshot prior env so we can restore after the run (scope tokens to this run).
-            prior_env: dict[str, str | None] = {}
-
-            # Acquire env lock to safely set auth env vars
-            async with self._env_lock:
-                for payload_key, env_key in _TOKEN_ENV_MAP.items():
-                    val = auth_tokens.get(payload_key, "")
-                    if val:
-                        prior_env[env_key] = os.environ.get(env_key)
-                        os.environ[env_key] = val
-
-                # Zotero: api_key + library_id + library_type from top-level zotero_config
-                zotero_config = payload.get("zotero_config") or {}
-                for cfg_key, env_key in (
-                    ("api_key",      "ZOTERO_API_KEY"),
-                    ("library_id",   "ZOTERO_LIBRARY_ID"),
-                    ("library_type", "ZOTERO_LIBRARY_TYPE"),
-                ):
-                    val = (zotero_config.get(cfg_key) or "").strip() if isinstance(zotero_config.get(cfg_key), str) else zotero_config.get(cfg_key)
-                    if val:
-                        prior_env[env_key] = os.environ.get(env_key)
-                        os.environ[env_key] = str(val)
+            credential_scope = self._build_credential_scope(payload)
+            run_env = credential_scope.to_env()
 
             try:
-                # orchestrator runs WITHOUT holding env_lock (env vars are now set)
-                flags = payload.get("flags", {})
-                provider = payload.get("provider", {})
-                settings = load_config(output_dir=Path(state.output_dir))
-                if provider:
-                    settings = settings.with_llm_override(
-                        provider=provider.get("provider"),
-                        model=provider.get("model"),
-                        api_key=provider.get("api_key"),
-                        base_url=provider.get("base_url"),
+                async with scoped_environ(run_env):
+                    flags = payload.get("flags", {})
+                    output_dir = Path(state.output_dir)
+                    settings = load_config(output_dir=output_dir)
+                    # Point runs_dir at the parent so the engine stores files directly
+                    # inside output_dir (data/runs/<run_id>/) rather than the default
+                    # data/runs/<run_id>/runs/<inner_id>/ double-nesting.
+                    settings = settings.model_copy(update={"runs_dir": output_dir.parent})
+                    logger = configure_logging(verbose=True)
+                    orchestrator = MasterOrchestrator(
+                        settings,
+                        logger,
+                        event_callback=lambda event: self.record_event(state.run_id, event),
+                        credential_scope=credential_scope,
                     )
-                logger = configure_logging(verbose=True)
-                orchestrator = MasterOrchestrator(settings, logger, event_callback=lambda event: self.record_event(state.run_id, event))
-                await self._update_state(state.run_id, status="running", stage="starting", message="Run started")
-                result = await orchestrator.run(
-                    state.mission or {},
-                    collect_only=bool(flags.get("collect_only", False)),
-                    clean_only=bool(flags.get("clean_only", False)),
-                    validate_credentials=bool(flags.get("validate_credentials", False)),
-                    authenticated_only=bool(flags.get("authenticated_only", False)),
-                    public_only=bool(flags.get("public_only", False)),
-                    resume=bool(flags.get("resume", False)),
-                    credentials_path=str(self.base_settings.credentials_file),
-                )
+                    await self._update_state(state.run_id, status="running", stage="starting", message="Run started")
+                    result = await orchestrator.run(
+                        state.mission or {},
+                        run_id=state.run_id,
+                        collect_only=bool(flags.get("collect_only", False)),
+                        clean_only=bool(flags.get("clean_only", False)),
+                        validate_credentials=bool(flags.get("validate_credentials", False)),
+                        authenticated_only=bool(flags.get("authenticated_only", False)),
+                        public_only=bool(flags.get("public_only", False)),
+                        resume=bool(flags.get("resume", False)),
+                        credentials_path=str(self.base_settings.credentials_file),
+                    )
                 await self._complete_run(state.run_id, result)
             except Exception as exc:
                 _logger.exception("Run %s failed", state.run_id)
                 safe_error = f"{type(exc).__name__}: {_scrub_secrets(str(exc))[:400]}"
                 await self._update_state(state.run_id, status="failed", stage="failed", message="Run failed", error=safe_error)
-            finally:
-                # Re-acquire env lock to safely restore env vars
-                async with self._env_lock:
-                    for env_key, prior_val in prior_env.items():
-                        if prior_val is None:
-                            os.environ.pop(env_key, None)
-                        else:
-                            os.environ[env_key] = prior_val
 
     async def record_event(self, run_id: str, event: dict[str, Any]) -> None:
         async with self._lock:
             state = self.runs[run_id]
             state.logs.append(event)
-            state.stage = event.get("stage", state.stage)
+            stage = event.get("stage", "")
+            state.stage = stage or state.stage
             state.message = event.get("message", state.message)
+            # Update live counters so clients see progress during the run
+            if stage in ("collect_done", "source_done") and "count" in event:
+                state.docs_collected = max(state.docs_collected, int(event["count"]))
+            elif stage in ("clean_progress", "clean_done") and "count" in event:
+                state.docs_cleaned = int(event["count"])
             state.updated_at = datetime.now(timezone.utc).isoformat()
+            self._persist_state(state)
 
     async def _complete_run(self, run_id: str, result: RunResult) -> None:
         async with self._lock:
@@ -276,6 +435,7 @@ class RunManager:
             state.images = result.images or []
             state.query_plan = result.query_plan or {}
             state.updated_at = datetime.now(timezone.utc).isoformat()
+            self._persist_state(state)
 
     async def _update_state(self, run_id: str, **updates: Any) -> None:
         async with self._lock:
@@ -283,10 +443,32 @@ class RunManager:
             for key, value in updates.items():
                 setattr(state, key, value)
             state.updated_at = datetime.now(timezone.utc).isoformat()
+            self._persist_state(state)
 
     async def get_run(self, run_id: str) -> dict[str, Any]:
         async with self._lock:
             state = self.runs[run_id]
+            mission = state.mission or {}
+            collection = mission.get("collection", {}) if isinstance(mission, dict) else {}
+            docs_collected = state.docs_collected or state.stats.get("collected", 0)
+            docs_cleaned = state.docs_cleaned or state.stats.get("cleaned", 0)
+            total_documents = docs_cleaned or docs_collected or len(state.documents)
+            if state.status == "completed":
+                progress = 100
+            elif state.status in {"failed", "cancelled"}:
+                progress = 100
+            elif state.stage in {"export", "report", "export_done"}:
+                progress = 90
+            elif state.stage in {"knowledge_graph", "images", "kb_save", "score"}:
+                progress = 80
+            elif state.stage in {"cleaning", "clean_progress", "clean_done"}:
+                progress = 65
+            elif docs_collected:
+                progress = 40
+            elif state.status == "running":
+                progress = 10
+            else:
+                progress = 0
             return {
                 "run_id": state.run_id,
                 "status": state.status,
@@ -301,6 +483,12 @@ class RunManager:
                 "documents": state.documents,
                 "raw_documents": state.raw_documents,
                 "ensemble_documents": state.ensemble_documents,
+                "docs_collected": docs_collected,
+                "docs_cleaned": docs_cleaned,
+                "topic": collection.get("topic") or state.stats.get("topic") or state.message,
+                "sources_used": collection.get("sources", {}).get("enabled", []),
+                "total_documents": total_documents,
+                "progress": progress,
                 "error": state.error,
                 "output_dir": state.output_dir,
                 # Intelligence outputs (lightweight summaries for main status call)

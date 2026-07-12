@@ -1,4 +1,7 @@
-"""GitHub collector — searches repositories and issues via PyGithub or DuckDuckGo fallback."""
+"""GitHub collector.
+
+Searches repositories and issues via PyGithub or DuckDuckGo fallback.
+"""
 
 from __future__ import annotations
 
@@ -11,6 +14,23 @@ from typing import AsyncGenerator, Any
 from .base import BaseCollector
 
 logger = logging.getLogger("aria")
+
+DDGS: Any | None = None
+
+
+def _ddgs_client() -> Any:
+    """Return a DDG search client, allowing tests to patch module-level DDGS."""
+    global DDGS
+    if DDGS is None:
+        try:
+            from ddgs import DDGS as ddgs_cls
+        except ImportError:
+            from duckduckgo_search import DDGS as ddgs_cls
+        DDGS = ddgs_cls
+
+    if isinstance(DDGS, type) or not hasattr(DDGS, "__enter__"):
+        return DDGS()
+    return DDGS
 
 
 class GitHubCollector(BaseCollector):
@@ -29,6 +49,7 @@ class GitHubCollector(BaseCollector):
         if self._token:
             try:
                 from github import Github
+
                 g = Github(self._token)
                 g.get_user().login  # noqa: B018 — validate token
                 return True
@@ -49,16 +70,22 @@ class GitHubCollector(BaseCollector):
             async for doc in self._collect_authenticated(queries):
                 yield doc
         else:
-            logger.info("GitHubCollector: no GITHUB_TOKEN set, using DuckDuckGo fallback")
+            logger.info(
+                "GitHubCollector: no GITHUB_TOKEN set, using DuckDuckGo fallback"
+            )
             async for doc in self._collect_public(queries):
                 yield doc
 
-    async def _collect_authenticated(self, queries: list[str]) -> AsyncGenerator[dict[str, Any], None]:
+    async def _collect_authenticated(
+        self, queries: list[str]
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """Search GitHub via PyGithub API."""
         try:
             from github import Github, GithubException
         except ImportError:
-            logger.warning("GitHubCollector: PyGithub not installed, falling back to public")
+            logger.warning(
+                "GitHubCollector: PyGithub not installed, falling back to public"
+            )
             async for doc in self._collect_public(queries):
                 yield doc
             return
@@ -93,8 +120,16 @@ class GitHubCollector(BaseCollector):
                         )
                         raw = readme.decoded_content.decode("utf-8", errors="ignore")
                         # Strip markdown headers and take first 2000 chars
-                        text_lines = [ln for ln in raw.splitlines() if ln.strip() and not ln.startswith("#")]
-                        text = (repo.description or "") + "\n\n" + "\n".join(text_lines[:50])
+                        text_lines = [
+                            ln
+                            for ln in raw.splitlines()
+                            if ln.strip() and not ln.startswith("#")
+                        ]
+                        text = (
+                            (repo.description or "")
+                            + "\n\n"
+                            + "\n".join(text_lines[:50])
+                        )
                         text = text[:3000]
                     except Exception:
                         pass
@@ -102,9 +137,14 @@ class GitHubCollector(BaseCollector):
                     if not text.strip():
                         continue
 
+                    title = (
+                        f"{repo.full_name} — "
+                        f"{repo.description or 'GitHub Repository'}"
+                    )
+
                     yield {
                         "url": url,
-                        "title": f"{repo.full_name} — {repo.description or 'GitHub Repository'}",
+                        "title": title,
                         "text": text.strip(),
                         "source_type": "technical_doc",
                         "platform": "github",
@@ -115,7 +155,11 @@ class GitHubCollector(BaseCollector):
                             "stars": repo.stargazers_count,
                             "forks": repo.forks_count,
                             "repo_language": repo.language or "",
-                            "topics": repo.get_topics()[:5] if hasattr(repo, "get_topics") else [],
+                            "topics": (
+                                repo.get_topics()[:5]
+                                if hasattr(repo, "get_topics")
+                                else []
+                            ),
                             "query": query,
                         },
                     }
@@ -124,7 +168,9 @@ class GitHubCollector(BaseCollector):
                 await asyncio.sleep(0.5)
 
             except GithubException as exc:
-                logger.warning("GitHubCollector: repo search error for '%s': %s", query, exc)
+                logger.warning(
+                    "GitHubCollector: repo search error for '%s': %s", query, exc
+                )
 
             # Search issues
             try:
@@ -170,9 +216,13 @@ class GitHubCollector(BaseCollector):
                 await asyncio.sleep(0.5)
 
             except GithubException as exc:
-                logger.warning("GitHubCollector: issue search error for '%s': %s", query, exc)
+                logger.warning(
+                    "GitHubCollector: issue search error for '%s': %s", query, exc
+                )
 
-    async def _collect_public(self, queries: list[str]) -> AsyncGenerator[dict[str, Any], None]:
+    async def _collect_public(
+        self, queries: list[str]
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """Search GitHub via DuckDuckGo site:github.com."""
         seen_urls: set[str] = set()
         count = 0
@@ -182,13 +232,8 @@ class GitHubCollector(BaseCollector):
                 break
             try:
                 search_query = f"site:github.com {query}"
-                try:
-                    from ddgs import DDGS
-                except ImportError:
-                    from duckduckgo_search import DDGS
-
                 results: list[dict] = []
-                with DDGS() as ddgs:
+                with _ddgs_client() as ddgs:
                     for r in ddgs.text(search_query, max_results=5):
                         results.append(r)
 
@@ -224,4 +269,6 @@ class GitHubCollector(BaseCollector):
                 await asyncio.sleep(0.3)
 
             except Exception as exc:
-                logger.warning("GitHubCollector: public search error for '%s': %s", query, exc)
+                logger.warning(
+                    "GitHubCollector: public search error for '%s': %s", query, exc
+                )

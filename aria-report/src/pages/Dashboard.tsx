@@ -7,6 +7,7 @@ import { NumberTicker } from "@/components/glass/NumberTicker";
 import { RunRow } from "@/components/shared/RunRow";
 import { Button } from "@/components/ui/button";
 import { useRuns } from "@/hooks/useRuns";
+import { SOURCES } from "@/lib/sources";
 
 const stagger = { animate: { transition: { staggerChildren: 0.06 } } };
 const item = {
@@ -29,7 +30,8 @@ export default function Dashboard() {
   const totalDocs  = runs.reduce((s, r) => s + (r.total_documents ?? 0), 0);
   const activeCount = runs.filter((r) => r.status === "running" || r.status === "pending").length;
 
-  const statValues = [data?.total ?? 0, totalDocs, activeCount, 21];
+  const sourceCount = SOURCES.length;
+  const statValues = [data?.total ?? 0, totalDocs, activeCount, sourceCount];
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -149,7 +151,7 @@ export default function Dashboard() {
                 </div>
                 <p className="text-aria-text2 text-[13px] font-[510] mb-1">No runs yet</p>
                 <p className="text-aria-text4 text-[11px] mb-5 max-w-[240px] mx-auto leading-relaxed">
-                  Start a research run to collect and synthesize data from 21 sources
+                  Start a research run to collect and synthesize data from {sourceCount} sources
                 </p>
                 <Button
                   size="sm"

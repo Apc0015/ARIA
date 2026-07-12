@@ -37,7 +37,8 @@ class CitationAgent:
             return docs
 
         all_docs = list(docs)
-        seen_urls: set[str] = {doc.get("url", "") for doc in docs}
+        seen_urls: set[str] = {doc.get("url", "") for doc in docs if doc.get("url")}
+        seen_ids: set[str] = set()
         citation_docs: list[dict[str, Any]] = []
 
         current_batch = docs
@@ -54,6 +55,18 @@ class CitationAgent:
             for doc in annotated:
                 pmids.extend(doc.get("citations", {}).get("pmids", []))
             pmids = list(set(pmids))[:20]
+
+            # Filter already-seen identifiers to prevent loops
+            dois = [d for d in dois if f"doi:{d.lower()}" not in seen_ids]
+            arxiv_ids = [a for a in arxiv_ids if f"arxiv:{a.lower()}" not in seen_ids]
+            pmids = [p for p in pmids if f"pmid:{p}" not in seen_ids]
+
+            for d in dois:
+                seen_ids.add(f"doi:{d.lower()}")
+            for a in arxiv_ids:
+                seen_ids.add(f"arxiv:{a.lower()}")
+            for p in pmids:
+                seen_ids.add(f"pmid:{p}")
 
             if not dois and not arxiv_ids and not pmids:
                 break
@@ -85,6 +98,13 @@ class CitationAgent:
                 url = doc.get("url", "")
                 if url and url not in seen_urls:
                     seen_urls.add(url)
+                    meta = doc.get("metadata", {}) or {}
+                    if meta.get("doi"):
+                        seen_ids.add(f"doi:{str(meta.get('doi')).lower()}")
+                    if meta.get("arxiv_id"):
+                        seen_ids.add(f"arxiv:{str(meta.get('arxiv_id')).lower()}")
+                    if meta.get("pmid"):
+                        seen_ids.add(f"pmid:{str(meta.get('pmid'))}")
                     doc["citation_depth"] = depth + 1
                     new_docs.append(doc)
                     if len(citation_docs) + len(new_docs) >= self._max_citations:

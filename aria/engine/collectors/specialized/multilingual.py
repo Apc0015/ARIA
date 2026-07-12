@@ -12,6 +12,24 @@ from .base import BaseCollector
 
 logger = logging.getLogger("aria")
 
+DDGS: Any | None = None
+
+
+def _ddgs_client() -> Any:
+    """Return a DDG search client, allowing tests to patch module-level DDGS."""
+    global DDGS
+    if DDGS is None:
+        try:
+            from ddgs import DDGS as ddgs_cls
+        except ImportError:
+            from duckduckgo_search import DDGS as ddgs_cls
+        DDGS = ddgs_cls
+
+    if isinstance(DDGS, type) or not hasattr(DDGS, "__enter__"):
+        return DDGS()
+    return DDGS
+
+
 # DuckDuckGo region codes → language label
 _REGION_LANG_MAP: dict[str, str] = {
     "de-de": "de",
@@ -41,7 +59,8 @@ def _parse_regions() -> list[str]:
     valid = [r for r in regions if r in _REGION_LANG_MAP]
     if not valid:
         logger.warning(
-            "MultilingualCollector: no valid regions in MULTILINGUAL_REGIONS='%s', using defaults",
+            "MultilingualCollector: no valid regions in "
+            "MULTILINGUAL_REGIONS='%s', using defaults",
             env_val,
         )
         return _DEFAULT_REGIONS
@@ -83,11 +102,6 @@ class MultilingualCollector(BaseCollector):
         # Distribute budget across regions
         per_region = max(2, self._max_results // len(self._regions))
 
-        try:
-            from ddgs import DDGS
-        except ImportError:
-            from duckduckgo_search import DDGS
-
         for region in self._regions:
             if count >= self._max_results:
                 break
@@ -101,7 +115,7 @@ class MultilingualCollector(BaseCollector):
 
                 try:
                     results: list[dict] = []
-                    with DDGS() as ddgs:
+                    with _ddgs_client() as ddgs:
                         for r in ddgs.text(
                             query,
                             region=region,

@@ -1,8 +1,10 @@
+import { useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { Toaster } from "sonner";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { useTheme } from "@/hooks/useTheme";
+import { ensureApiKey } from "@/lib/api";
 
 const pageVariants = {
   initial: { opacity: 0, x: 16 },
@@ -13,6 +15,13 @@ const pageVariants = {
 export default function App() {
   const location = useLocation();
   const { theme, toggle } = useTheme();
+
+  // Fetch the server-generated API key once on mount and inject it into
+  // every subsequent request via api.ts's module-level store.
+  useEffect(() => {
+    ensureApiKey()
+      .catch(() => {/* server unreachable — requests will 401 until resolved */});
+  }, []);
 
   return (
     <div className="flex h-screen overflow-hidden bg-aria-bg">

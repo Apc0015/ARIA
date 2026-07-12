@@ -13,8 +13,8 @@ async def get_run_manager(request: Request) -> RunManager:
     return request.app.state.run_manager
 
 
-def _flutter_payload_to_mission_yaml(payload: dict) -> str:
-    """Convert Flutter UI payload to a mission YAML string."""
+def _ui_payload_to_mission_yaml(payload: dict) -> str:
+    """Convert React UI payload to a mission YAML string."""
     import yaml
 
     topic = payload.get("topic", "")
@@ -31,10 +31,7 @@ def _flutter_payload_to_mission_yaml(payload: dict) -> str:
 
     cleaning = payload.get("cleaning", {})
     instructions = (
-        cleaning.get("instructions")
-        or cleaning.get("research_goal")
-        or intent
-        or topic
+        cleaning.get("instructions") or cleaning.get("research_goal") or intent or topic
     )
     schema = cleaning.get("output_schema") or {
         "is_relevant": "bool",
@@ -50,7 +47,7 @@ def _flutter_payload_to_mission_yaml(payload: dict) -> str:
         "mission": {"name": f"Research: {topic[:60]}"},
         "collection": {
             "topic": topic,
-            "depth": depth_names.get(depth_level, "standard"),
+            "depth": depth_names.get(depth_level, "medium"),
             "max_documents": max_docs.get(depth_level, 200),
             "max_per_source": 30,
             "sources": {"enabled": enabled},
@@ -73,16 +70,21 @@ async def start_run(payload: dict, run_manager: RunManager = Depends(get_run_man
     """Start a new research run.
 
     Accepts either:
-    - Flutter UI format: {topic, intent, depth_level, free_sources, ...}
+    - React UI format:  {topic, intent, depth_level, free_sources, ...}
     - Direct format:     {mission_yaml: "..."}
 
     Optional: include director_session_id to wire in the Research Director brief.
     """
-    # Attach research brief from a completed Director session if provided
+    # Attach research brief from a completed Director session if provided.
+    # Direct mission_yaml launches are explicit contracts, so they do not inherit
+    # Director phased-source overrides unless a caller opts into merging.
+    has_direct_mission = bool(payload.get("mission_yaml"))
     director_session_id = payload.get("director_session_id")
     research_brief: dict | None = None
-    if director_session_id:
+    merge_director_brief = bool(payload.get("merge_director_brief", False))
+    if director_session_id and (not has_direct_mission or merge_director_brief):
         from aria.api.routes.director import _sessions
+
         session = _sessions.get(director_session_id)
         if session and session.done and session.brief:
             research_brief = session.brief
@@ -91,14 +93,14 @@ async def start_run(payload: dict, run_manager: RunManager = Depends(get_run_man
                 payload = dict(payload)
                 payload["topic"] = research_brief["resolved_topic"]
 
-    # Convert Flutter payload to mission_yaml if needed
+    # Convert UI payload to mission_yaml if needed
     if "mission_yaml" not in payload and "topic" in payload:
         payload = {
-            "mission_yaml": _flutter_payload_to_mission_yaml(payload),
+            "mission_yaml": _ui_payload_to_mission_yaml(payload),
             # Preserve fields the orchestrator/run_manager reads from payload
-            "flags":        payload.get("flags", {}),
-            "credentials":  payload.get("credentials"),
-            "auth_tokens":  payload.get("auth_tokens", {}),
+            "flags": payload.get("flags", {}),
+            "credentials": payload.get("credentials"),
+            "auth_tokens": payload.get("auth_tokens", {}),
             "research_brief": research_brief,
         }
     elif research_brief:
@@ -124,15 +126,33 @@ async def list_runs(run_manager: RunManager = Depends(get_run_manager)):
     """List all runs."""
     runs = []
     for run_id, state in run_manager.runs.items():
-        runs.append({
-            "run_id": state.run_id,
-            "status": state.status,
-            "stage": state.stage,
-            "message": state.message,
-            "created_at": state.created_at,
-            "updated_at": state.updated_at,
-            "error": state.error,
-        })
+        mission = state.mission or {}
+        collection = mission.get("collection", {}) if isinstance(mission, dict) else {}
+        docs_collected = state.docs_collected or state.stats.get("collected", 0)
+        docs_cleaned = state.docs_cleaned or state.stats.get("cleaned", 0)
+        runs.append(
+            {
+                "run_id": state.run_id,
+                "status": state.status,
+                "stage": state.stage,
+                "message": state.message,
+                "created_at": state.created_at,
+                "updated_at": state.updated_at,
+                "error": state.error,
+                "topic": collection.get("topic")
+                or state.stats.get("topic")
+                or state.message,
+                "sources_used": collection.get("sources", {}).get("enabled", []),
+                "total_documents": docs_cleaned
+                or docs_collected
+                or len(state.documents),
+                "progress": (
+                    100
+                    if state.status == "completed"
+                    else (10 if state.status == "running" else 0)
+                ),
+            }
+        )
     return {"runs": runs, "total": len(runs)}
 
 
@@ -145,20 +165,25 @@ async def get_run(run_id: str, run_manager: RunManager = Depends(get_run_manager
 
 
 @router.get("/api/runs/{run_id}/documents")
-async def get_run_documents(run_id: str, run_manager: RunManager = Depends(get_run_manager)):
+async def get_run_documents(
+    run_id: str, run_manager: RunManager = Depends(get_run_manager)
+):
     """Get document preview for a run (first 100 documents)."""
     if run_id not in run_manager.runs:
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
     state = run_manager.runs[run_id]
+    documents = [_normalize_document(doc) for doc in state.documents[:100]]
     return {
         "run_id": run_id,
-        "documents": state.documents[:100],
+        "documents": documents,
         "total": len(state.documents),
     }
 
 
 @router.get("/api/runs/{run_id}/documents/raw")
-async def get_run_raw_documents(run_id: str, run_manager: RunManager = Depends(get_run_manager)):
+async def get_run_raw_documents(
+    run_id: str, run_manager: RunManager = Depends(get_run_manager)
+):
     """Get raw documents for a run."""
     if run_id not in run_manager.runs:
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
@@ -171,7 +196,9 @@ async def get_run_raw_documents(run_id: str, run_manager: RunManager = Depends(g
 
 
 @router.get("/api/runs/{run_id}/documents/ensemble")
-async def get_run_ensemble_documents(run_id: str, run_manager: RunManager = Depends(get_run_manager)):
+async def get_run_ensemble_documents(
+    run_id: str, run_manager: RunManager = Depends(get_run_manager)
+):
     """Get LLM ensemble documents for a run."""
     if run_id not in run_manager.runs:
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
@@ -180,4 +207,19 @@ async def get_run_ensemble_documents(run_id: str, run_manager: RunManager = Depe
         "run_id": run_id,
         "documents": state.ensemble_documents,
         "total": len(state.ensemble_documents),
+    }
+
+
+def _normalize_document(doc: dict) -> dict:
+    """Return a React-friendly document preview shape."""
+    return {
+        **doc,
+        "title": doc.get("title") or doc.get("url") or "Untitled document",
+        "source": doc.get("source")
+        or doc.get("platform")
+        or doc.get("source_type")
+        or "unknown",
+        "summary": doc.get("summary")
+        or doc.get("text_english")
+        or doc.get("text", "")[:300],
     }

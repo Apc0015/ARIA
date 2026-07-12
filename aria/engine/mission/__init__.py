@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+logger = logging.getLogger("aria")
 
 # ---------------------------------------------------------------------------
 # Defaults
@@ -22,8 +24,8 @@ _DEFAULT_MISSION: dict[str, Any] = {
         "intent": "",
         # ARIA 5.0: optional domain and country selection
         # If set, activates domain-specific collectors (DepartmentRunner)
-        "domains": [],        # e.g. ["jobs", "health", "finance"]
-        "countries": [],      # e.g. ["IN", "US"] or ["ASIA"]
+        "domains": [],  # e.g. ["jobs", "health", "finance"]
+        "countries": [],  # e.g. ["IN", "US"] or ["ASIA"]
         "depth": "medium",
         "max_documents": 100,
         "max_per_source": 25,
@@ -94,6 +96,18 @@ _DEFAULT_MISSION: dict[str, Any] = {
     },
 }
 
+_DEPTH_ALIASES = {
+    "surface": "low",
+    "quick": "low",
+    "standard": "medium",
+    "normal": "medium",
+    "deep": "high",
+    "expert": "high",
+    "thorough": "high",
+    "maximum": "exhaustive",
+    "max": "exhaustive",
+}
+
 
 # ---------------------------------------------------------------------------
 # Public helpers
@@ -136,21 +150,80 @@ def validate_mission(mission: dict) -> dict:
         ValueError: If required fields are missing or invalid.
     """
     collection = mission.get("collection", {})
+    if not isinstance(collection, dict):
+        raise ValueError("Mission 'collection' must be a dict.")
     topic = collection.get("topic", "").strip()
     if not topic:
         raise ValueError("Mission is missing a 'collection.topic' field.")
 
-    depth = collection.get("depth", "medium")
+    raw_depth = str(collection.get("depth", "medium")).strip().lower()
+    depth = _DEPTH_ALIASES.get(raw_depth, raw_depth)
     if depth not in ("low", "medium", "high", "exhaustive"):
-        raise ValueError(f"Invalid depth '{depth}'. Must be one of: low, medium, high, exhaustive.")
+        raise ValueError(
+            f"Invalid depth '{raw_depth}'. Must be one of: low, medium, high, "
+            "exhaustive, surface, standard, deep, thorough, maximum."
+        )
+    collection["depth"] = depth
+
+    max_documents = collection.get("max_documents", 100)
+    max_per_source = collection.get("max_per_source", 25)
+    if not isinstance(max_documents, int) or max_documents <= 0:
+        raise ValueError("collection.max_documents must be a positive integer.")
+    if not isinstance(max_per_source, int) or max_per_source <= 0:
+        raise ValueError("collection.max_per_source must be a positive integer.")
+    if max_per_source > max_documents:
+        raise ValueError("collection.max_per_source cannot exceed collection.max_documents.")
+
+    languages = collection.get("languages", {})
+    if not isinstance(languages, dict):
+        raise ValueError("collection.languages must be a dict.")
+    collect_langs = languages.get("collect", ["en"])
+    if not isinstance(collect_langs, list) or not all(isinstance(x, str) for x in collect_langs):
+        raise ValueError("collection.languages.collect must be a list of strings.")
 
     sources = collection.get("sources", {})
+    if not isinstance(sources, dict):
+        raise ValueError("collection.sources must be a dict.")
     enabled = sources.get("enabled", [])
-    valid_sources = {"web", "pdf", "academic", "youtube", "reddit", "hackernews", "rss", "llm"}
+    if not isinstance(enabled, list) or not all(isinstance(x, str) for x in enabled):
+        raise ValueError("collection.sources.enabled must be a list of strings.")
+    if not enabled:
+        raise ValueError("collection.sources.enabled must include at least one source.")
+    valid_sources = {
+        "web",
+        "pdf",
+        "academic",
+        "youtube",
+        "reddit",
+        "hackernews",
+        "rss",
+        "llm",
+    }
     unknown = set(enabled) - valid_sources
     if unknown:
         # Warn rather than fail — allow forward compatibility
-        pass
+        logger.warning("Unknown collection sources: %s", ", ".join(sorted(unknown)))
+
+    cleaning = mission.get("cleaning", {})
+    if not isinstance(cleaning, dict):
+        raise ValueError("cleaning must be a dict.")
+    instructions = cleaning.get("instructions", "")
+    if not isinstance(instructions, str) or not instructions.strip():
+        raise ValueError("cleaning.instructions must be a non-empty string.")
+    output_schema = cleaning.get("output_schema", {})
+    if not isinstance(output_schema, dict):
+        raise ValueError("cleaning.output_schema must be a dict.")
+
+    output = mission.get("output", {})
+    if not isinstance(output, dict):
+        raise ValueError("output must be a dict.")
+    formats = output.get("formats", [])
+    if not isinstance(formats, list) or not all(isinstance(x, str) for x in formats):
+        raise ValueError("output.formats must be a list of strings.")
+    valid_formats = {"json", "csv", "markdown", "html", "zip"}
+    invalid_formats = set(formats) - valid_formats
+    if invalid_formats:
+        raise ValueError(f"Invalid output formats: {sorted(invalid_formats)}")
 
     return mission
 
@@ -165,6 +238,8 @@ def load_mission_text(yaml_text: str) -> dict:
         Fully resolved mission dict.
     """
     raw = yaml.safe_load(yaml_text) or {}
+    if not isinstance(raw, dict):
+        raise ValueError("Mission YAML must parse to a dict.")
     mission = apply_defaults(raw)
     return validate_mission(mission)
 
@@ -256,7 +331,9 @@ def mission_to_yaml_text(mission: dict) -> str:
     Returns:
         YAML string.
     """
-    return yaml.dump(mission, allow_unicode=True, sort_keys=False, default_flow_style=False)
+    return yaml.dump(
+        mission, allow_unicode=True, sort_keys=False, default_flow_style=False
+    )
 
 
 def schema_to_pretty_json(schema: dict) -> str:

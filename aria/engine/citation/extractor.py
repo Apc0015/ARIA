@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-# DOI pattern: 10.xxxx/...
+# DOI pattern: 10.xxxx/... — trailing punctuation stripped in extract_citations()
 _DOI_RE = re.compile(r"\b10\.\d{4,9}/[^\s\"'<>]+", re.IGNORECASE)
 # arXiv IDs: 1234.56789 or arXiv:1234.56789
 _ARXIV_RE = re.compile(r"(?:arXiv:)?(\d{4}\.\d{4,5}(?:v\d+)?)", re.IGNORECASE)
@@ -29,7 +29,8 @@ def extract_citations(doc: dict[str, Any]) -> dict[str, list[str]]:
     text = doc.get("text", "") or ""
     url = doc.get("url", "") or ""
 
-    dois = list(set(_DOI_RE.findall(text)))
+    # Strip trailing punctuation that gets captured by the greedy pattern
+    dois = list({d.rstrip(".,;:)>\"'") for d in _DOI_RE.findall(text)})
     arxiv_ids = list(set(_ARXIV_RE.findall(text)))
     pmids = list(set(_PMID_RE.findall(text)))
 

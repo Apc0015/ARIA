@@ -5,9 +5,12 @@ import { PageTopbar } from "@/components/layout/PageTopbar";
 import { GlassCard } from "@/components/glass/GlassCard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { RunRow } from "@/components/shared/RunRow";
 import { useRun, useRunDocuments } from "@/hooks/useRun";
+import { useRuns } from "@/hooks/useRuns";
 import { api } from "@/lib/api";
 import { formatDistanceToNow } from "date-fns";
+import { toast } from "sonner";
 
 const stagger = { animate: { transition: { staggerChildren: 0.04 } } };
 const item = { initial: { opacity: 0, y: 8 }, animate: { opacity: 1, y: 0, transition: { duration: 0.18 } } };
@@ -15,15 +18,69 @@ const item = { initial: { opacity: 0, y: 8 }, animate: { opacity: 1, y: 0, trans
 export default function Report() {
   const { runId } = useParams<{ runId: string }>();
   const navigate = useNavigate();
+  const { data: runsData, isLoading: runsLoading } = useRuns();
   const { data: run, isLoading, isError } = useRun(runId ?? "");
   const { data: docsData } = useRunDocuments(runId ?? "");
 
   const docs = docsData?.documents ?? [];
   const totalDocs = docsData?.total ?? 0;
 
-  function download(url: string, name: string) {
+  async function download(kind: "markdown" | "json" | "csv" | "raw") {
+    if (!runId) return;
+    try {
+      const { blob, filename } = await api.exports.download(runId, kind);
+      const url = URL.createObjectURL(blob);
+      triggerDownload(url, filename);
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Download failed");
+    }
+  }
+
+  function triggerDownload(url: string, name: string) {
     const a = document.createElement("a");
     a.href = url; a.download = name; a.click();
+  }
+
+  if (!runId) {
+    const runs = runsData?.runs ?? [];
+    const reportRuns = runs.filter((r) => r.status === "completed" || r.status === "failed");
+    const shownRuns = reportRuns.length ? reportRuns : runs.slice(0, 8);
+
+    return (
+      <div className="flex flex-col h-full overflow-hidden">
+        <PageTopbar
+          title="Reports"
+          subtitle={reportRuns.length ? `${reportRuns.length} finished run${reportRuns.length === 1 ? "" : "s"}` : "Run outputs and exports"}
+          action={
+            <Button
+              size="sm"
+              className="bg-aria-brand hover:bg-aria-accent text-white text-[11px] h-7 px-3 brand-glow"
+              onClick={() => navigate("/launch")}
+            >
+              <Play size={11} className="mr-1.5" /> New Run
+            </Button>
+          }
+        />
+
+        <div className="flex-1 overflow-y-auto p-5 pb-16 md:pb-5 space-y-3">
+          {runsLoading ? (
+            [1, 2, 3].map((i) => <div key={i} className="glass rounded-lg h-14 animate-pulse" />)
+          ) : shownRuns.length === 0 ? (
+            <GlassCard className="p-8 text-center">
+              <p className="text-[13px] font-[510] text-aria-text2">No reports yet</p>
+              <p className="mt-1 text-[11px] text-aria-text4">Completed runs will appear here with export options.</p>
+            </GlassCard>
+          ) : (
+            <div className="space-y-2">
+              {shownRuns.map((run) => (
+                <RunRow key={run.run_id} run={run} />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
   }
 
   if (isLoading) {
@@ -90,17 +147,17 @@ export default function Report() {
               {/* Export buttons */}
               <div className="flex flex-wrap gap-2">
                 {[
-                  { label: "Markdown", icon: FileText, url: api.exports.markdown(runId ?? "") },
-                  { label: "JSON", icon: FileJson, url: api.exports.json(runId ?? "") },
-                  { label: "CSV", icon: Table, url: api.exports.csv(runId ?? "") },
-                  { label: "Raw", icon: Download, url: api.exports.raw(runId ?? "") },
-                ].map(({ label, icon: Icon, url }) => (
+                  { label: "Markdown", icon: FileText, kind: "markdown" as const },
+                  { label: "JSON", icon: FileJson, kind: "json" as const },
+                  { label: "CSV", icon: Table, kind: "csv" as const },
+                  { label: "Raw", icon: Download, kind: "raw" as const },
+                ].map(({ label, icon: Icon, kind }) => (
                   <Button
                     key={label}
                     size="sm"
                     variant="outline"
                     className="text-[11px] h-8 border-[var(--aria-border)] bg-transparent text-aria-text2 hover:bg-[rgba(255,255,255,0.03)] rounded-[6px]"
-                    onClick={() => download(url, `aria-${runId}-${label.toLowerCase()}`)}
+                    onClick={() => download(kind)}
                   >
                     <Icon size={11} className="mr-1.5" /> {label}
                   </Button>

@@ -28,6 +28,7 @@ fastapi>=0.115
 uvicorn>=0.30
 pydantic>=2.8
 pyzotero>=1.5
+cryptography>=42.0
 # Office / multi-format → Markdown conversion (Zotero attachments, DOCX, PPTX, XLSX)
 markitdown[docx,pptx,xlsx,pdf]>=0.1.5
 # Optional: JS-aware crawling — replaces retry-Camofox as web extraction fallback

@@ -14,7 +14,10 @@ class Deduplicator:
         self._content_fingerprints: Set[str] = set()
 
     def _url_hash(self, url: str) -> str:
-        return hashlib.sha256(url.strip().lower().encode()).hexdigest()
+        from aria.utils.url import normalize_url
+
+        normalized = normalize_url(url).lower() or url.strip().lower()
+        return hashlib.sha256(normalized.encode()).hexdigest()
 
     def _content_fingerprint(self, text: str) -> str:
         # Use first 500 chars + length to create a stable fingerprint
