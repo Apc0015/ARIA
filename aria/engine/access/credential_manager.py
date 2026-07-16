@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any, Optional
+
+logger = logging.getLogger("aria")
 
 
 class CredentialManager:
@@ -37,6 +40,14 @@ class CredentialManager:
                     # Support both {"platforms": {...}} wrapper and flat dict
                     self._credentials = data.get("platforms", data) if isinstance(data, dict) else {}
             except (json.JSONDecodeError, OSError):
+                self._credentials = {}
+            except Exception as exc:
+                # Wrong/missing ARIA_CREDENTIALS_KEY must not crash the API —
+                # fail loudly in the log, run with no stored credentials.
+                logger.error(
+                    "Could not decrypt %s (check ARIA_CREDENTIALS_KEY): %s",
+                    path, type(exc).__name__,
+                )
                 self._credentials = {}
 
     @property
@@ -102,6 +113,11 @@ class CredentialManager:
 
         with target.open("w", encoding="utf-8") as f:
             json.dump(to_write, f, indent=2, ensure_ascii=False)
+        # Secrets file: owner read/write only
+        try:
+            os.chmod(target, 0o600)
+        except OSError:  # pragma: no cover — non-POSIX filesystems
+            pass
 
         self._file = target
         return target

@@ -86,7 +86,13 @@ def load_config(output_dir: Path | None = None) -> Config:
         raw_data_dir=run_root / "raw",
         clean_data_dir=run_root / "clean",
         export_dir=run_root / "exports",
-        runs_dir=run_root / "runs",
+        # RUNS_DIR (documented in .env) applies only when no explicit
+        # output_dir was requested — an explicit argument always wins.
+        runs_dir=(
+            run_root / "runs"
+            if output_dir
+            else Path(os.getenv("RUNS_DIR", str(run_root / "runs"))).expanduser()
+        ),
         credentials_file=Path(
             os.getenv("CREDENTIALS_FILE", str(PROJECT_ROOT / "credentials" / "credentials.json"))
         ).expanduser(),

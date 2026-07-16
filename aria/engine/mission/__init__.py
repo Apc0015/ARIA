@@ -189,16 +189,11 @@ def validate_mission(mission: dict) -> dict:
         raise ValueError("collection.sources.enabled must be a list of strings.")
     if not enabled:
         raise ValueError("collection.sources.enabled must include at least one source.")
-    valid_sources = {
-        "web",
-        "pdf",
-        "academic",
-        "youtube",
-        "reddit",
-        "hackernews",
-        "rss",
-        "llm",
-    }
+    # Derive from the collector registry so this never goes stale again
+    # (a hardcoded 8-source copy used to warn on perfectly valid sources).
+    from aria.engine.orchestrator.collection import _COLLECTOR_REGISTRY
+
+    valid_sources = set(_COLLECTOR_REGISTRY) | {"llm", "user_urls"}
     unknown = set(enabled) - valid_sources
     if unknown:
         # Warn rather than fail — allow forward compatibility

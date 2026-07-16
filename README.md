@@ -256,6 +256,9 @@ tests/                   Python test suite
   (`ARIA_RESPECT_ROBOTS=false` to opt out for sites you own).
 - **Unpaywall requires your real email** (`UNPAYWALL_EMAIL`); the route is
   skipped when unset.
+- **Credentials can be encrypted at rest.** Set `ARIA_CREDENTIALS_KEY` (a
+  Fernet key) and `credentials.json` is written encrypted with owner-only
+  file permissions; existing plaintext files keep loading.
 
 ## CLI reference
 
