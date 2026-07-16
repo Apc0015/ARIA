@@ -97,18 +97,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # ── API server options ─────────────────────────────────────────────────
+    import os as _os
+
     server_group = parser.add_argument_group("API server options")
     server_group.add_argument(
         "--api-host",
         type=str,
-        default="0.0.0.0",
-        help="Host for the API server (default: 0.0.0.0).",
+        default=_os.environ.get("ARIA_API_HOST", "127.0.0.1"),
+        help="Host for the API server (default: $ARIA_API_HOST or 127.0.0.1; "
+        "use 0.0.0.0 to expose on all interfaces).",
     )
     server_group.add_argument(
         "--api-port",
         type=int,
-        default=8765,
-        help="Port for the API server (default: 8765).",
+        default=int(_os.environ.get("ARIA_API_PORT", "8765")),
+        help="Port for the API server (default: $ARIA_API_PORT or 8765).",
     )
 
     # ── Meta ───────────────────────────────────────────────────────────────
@@ -214,6 +217,29 @@ def main() -> int:
         except ImportError:
             print("[aria] Error: uvicorn is not installed. Run: pip install uvicorn", file=sys.stderr)
             return 1
+
+        import os
+        from ipaddress import ip_address
+
+        def _is_loopback(host: str) -> bool:
+            if host in ("localhost",):
+                return True
+            try:
+                return ip_address(host).is_loopback
+            except ValueError:
+                return False
+
+        # Local-dev convenience: on a loopback bind with no key configured and
+        # no explicit choice, disable auth so the React dev server just works.
+        # Any non-loopback bind keeps the secure default (auto-generated key).
+        if (
+            _is_loopback(args.api_host)
+            and not os.environ.get("ARIA_API_KEY")
+            and os.environ.get("ARIA_API_KEY_REQUIRED") is None
+        ):
+            os.environ["ARIA_API_KEY_REQUIRED"] = "false"
+            print("[aria] Loopback bind without ARIA_API_KEY — auth disabled for local dev.")
+            print("[aria] Set ARIA_API_KEY (or ARIA_API_KEY_REQUIRED=true) to enable auth.")
 
         print(f"[aria] Starting ARIA API Server on http://{args.api_host}:{args.api_port}")
         print(f"[aria] API Docs: http://{args.api_host}:{args.api_port}/docs")

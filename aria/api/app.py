@@ -62,6 +62,9 @@ app.add_middleware(
     allow_credentials=False,
 )
 
+# Starlette runs the LAST middleware added FIRST. Rate limiting is added
+# after auth so it is outermost: request floods (including brute-force key
+# guessing) are throttled by client IP before the auth check runs.
 from aria.api.middleware.auth import ApiKeyMiddleware
 app.add_middleware(ApiKeyMiddleware)
 

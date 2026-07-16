@@ -12,6 +12,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Playwright chromium for browser-based collectors (shared, root-installed
+# location so the non-root runtime user can use it)
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN playwright install --with-deps chromium \
+    && chmod -R a+rX /ms-playwright
+
 # Copy source
 COPY aria/ ./aria/
 COPY missions/ ./missions/
@@ -20,8 +26,8 @@ COPY missions/ ./missions/
 RUN useradd -m -u 1000 aria && chown -R aria:aria /app
 USER aria
 
-# Environment defaults (override in docker-compose or .env)
-ENV ARIA_API_KEY=""
+# Auth is required by default. Provide ARIA_API_KEY via docker-compose/.env;
+# if unset, the server generates a one-session key and prints it in the log.
 ENV ARIA_ALLOWED_ORIGINS="http://localhost,http://127.0.0.1"
 ENV HOST="0.0.0.0"
 ENV PORT="8765"
