@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "aria-research"
 version = "5.0.0"
 description = "Agentic Research Intelligence Architecture"
-authors = [{name = "Ayush Chhoker", email = "ayush.chhoker@example.com"}]
+authors = [{name = "Ayush Chhoker", email = "ayushchhoker15@gmail.com"}]
 license = {text = "MIT"}
 readme = "README.md"
 requires-python = ">=3.11"

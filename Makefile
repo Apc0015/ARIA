@@ -28,12 +28,12 @@ clean:
 	rm -rf data/raw/* data/clean/* data/exports/* logs/*
 
 format:
-	black aria/ infocollector/ tests/
-	isort aria/ infocollector/ tests/
+	black aria/ tests/
+	isort aria/ tests/
 
 lint:
-	flake8 aria/ infocollector/ tests/ --max-line-length=88
-	mypy aria/ infocollector/ --ignore-missing-imports
+	flake8 aria/ tests/ --max-line-length=88
+	mypy aria/ --ignore-missing-imports
 
 # Run tests + lint in one shot — use before commits
 check: lint test

@@ -64,7 +64,6 @@ python -m aria.cli --topic "AI safety benchmarks 2025" --mission missions/exampl
 | Source | Credentials |
 |---|---|
 | Twitter / X | `TWITTER_BEARER_TOKEN` |
-| LinkedIn | `LINKEDIN_EMAIL` + `LINKEDIN_PASSWORD` (Playwright session) |
 | Notion | `NOTION_TOKEN` integration token |
 | Slack | `SLACK_TOKEN` with search:read scope |
 | Podcast | RSS + opt-in Whisper transcription (`PODCAST_TRANSCRIBE=true`) |
@@ -192,8 +191,6 @@ ZOTERO_LIBRARY_TYPE=user
 
 # Authenticated web sources
 TWITTER_BEARER_TOKEN=
-LINKEDIN_EMAIL=
-LINKEDIN_PASSWORD=
 NOTION_TOKEN=
 SLACK_TOKEN=
 VIMEO_ACCESS_TOKEN=
@@ -234,19 +231,31 @@ REDIS_URL=redis://localhost:6379
 ## Project layout
 
 ```text
-aria/                    Python package (canonical)
-infocollector/           Compatibility layer (existing implementation)
-  collectors/            Async source agents including zotero.py
-  ensemble/              LLM ensemble agent + provider router
-  cleaner/               Smart cleaning agent + query expander
-  api/                   FastAPI backend
+aria/                    Python package
+  api/                   FastAPI backend (routes, middleware, run manager)
+  engine/                Research engine: orchestrator, collectors, cleaner,
+                         intelligence, storage, export
   access/                Credential, session, paywall management
+  types/ utils/          Shared types and helpers
 missions/examples/       Mission YAML templates
 credentials/             Gitignored credential storage
 aria-report/             React web UI
-Doc/                     Diagrams and HTML reports
+docs/                    Architecture documentation
 tests/                   Python test suite
 ```
+
+## Security defaults
+
+- **API auth is required by default.** Set `ARIA_API_KEY`; if unset, the
+  server generates a one-session key and prints it in the log. Local dev
+  (`aria --serve-api` on a loopback bind) disables auth automatically;
+  `ARIA_API_KEY_REQUIRED=false` disables it explicitly (unsafe).
+- **The API binds 127.0.0.1 by default.** Pass `--api-host 0.0.0.0` (or set
+  `ARIA_API_HOST`) to expose it, ideally behind the provided nginx config.
+- **robots.txt is respected** by the web scraper and link crawler
+  (`ARIA_RESPECT_ROBOTS=false` to opt out for sites you own).
+- **Unpaywall requires your real email** (`UNPAYWALL_EMAIL`); the route is
+  skipped when unset.
 
 ## CLI reference
 
