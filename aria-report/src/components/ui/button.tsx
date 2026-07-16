@@ -10,17 +10,17 @@ const buttonVariants = cva(
     variants: {
       variant: {
         ghost:
-          "bg-[rgba(255,255,255,0.02)] text-[#e2e4e7] border border-[rgb(36,40,44)] rounded-md hover:bg-[rgba(255,255,255,0.04)] focus-visible:shadow-elevation-focus",
+          "bg-black/[0.045] dark:bg-white/10 text-aria-text1 rounded-lg hover:bg-black/[0.08] dark:hover:bg-white/[0.16] active:scale-[0.98] focus-visible:shadow-elevation-focus",
         subtle:
-          "bg-[rgba(255,255,255,0.04)] text-aria-text2 rounded-md hover:bg-[rgba(255,255,255,0.06)] focus-visible:shadow-elevation-focus",
+          "bg-black/[0.03] dark:bg-white/[0.06] text-aria-text2 rounded-lg hover:bg-black/[0.06] dark:hover:bg-white/10 active:scale-[0.98] focus-visible:shadow-elevation-focus",
         primary:
-          "bg-aria-brand text-white rounded-md hover:bg-aria-accent-hover focus-visible:shadow-elevation-focus",
+          "bg-aria-accent text-white rounded-full hover:bg-aria-accent-hover active:scale-[0.98] focus-visible:shadow-elevation-focus",
         icon:
-          "bg-[rgba(255,255,255,0.03)] text-aria-text1 rounded-full hover:bg-[rgba(255,255,255,0.05)] focus-visible:shadow-elevation-focus",
+          "bg-black/[0.045] dark:bg-white/10 text-aria-text1 rounded-full hover:bg-black/[0.08] dark:hover:bg-white/[0.16] active:scale-[0.95] focus-visible:shadow-elevation-focus",
         pill:
-          "bg-transparent text-aria-text2 border border-[rgb(35,37,42)] rounded-pill hover:bg-[rgba(255,255,255,0.02)] focus-visible:shadow-elevation-focus",
+          "bg-transparent text-aria-text2 border border-[var(--aria-border)] rounded-pill hover:bg-black/[0.03] dark:hover:bg-white/[0.06] active:scale-[0.98] focus-visible:shadow-elevation-focus",
         toolbar:
-          "bg-[rgba(255,255,255,0.05)] text-aria-text4 rounded-xs shadow-elevation-subtle hover:bg-[rgba(255,255,255,0.07)] focus-visible:shadow-elevation-focus text-label font-medium",
+          "bg-black/[0.04] dark:bg-white/[0.08] text-aria-text3 rounded-md hover:bg-black/[0.07] dark:hover:bg-white/[0.14] focus-visible:shadow-elevation-focus text-label font-medium",
         destructive:
           "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90",
         outline:

@@ -9,14 +9,12 @@ import { Button } from "@/components/ui/button";
 import { useRuns } from "@/hooks/useRuns";
 import { SOURCES } from "@/lib/sources";
 
-const stagger = { animate: { transition: { staggerChildren: 0.06 } } };
-const item = {
-  initial: { opacity: 0, y: 10 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.22, ease: "easeOut" } },
-};
+// Entrance is handled once at the page level (App.tsx); items render settled.
+const stagger = {};
+const item = {};
 
 const STAT_COLORS = [
-  { icon: BarChart2, accent: "#7170ff", label: "Total Runs" },
+  { icon: BarChart2, accent: "var(--aria-accent)", label: "Total Runs" },
   { icon: FileStack, accent: "#10b981", label: "Docs Collected" },
   { icon: Activity,  accent: "#f59e0b", label: "Active Now" },
   { icon: Zap,       accent: "#06b6d4", label: "Sources" },
@@ -41,7 +39,7 @@ export default function Dashboard() {
           <Button
             size="sm"
             variant="primary"
-            className="h-7 px-3 brand-glow text-micro"
+            className="h-7 px-3.5 text-[13px] font-medium"
             onClick={() => navigate("/launch")}
           >
             <Play size={11} className="mr-1.5" /> New Run
@@ -79,9 +77,9 @@ export default function Dashboard() {
                     </div>
                     <NumberTicker
                       value={statValues[i]}
-                      className="block text-[28px] font-[620] text-aria-text1 tracking-h1 tabular-nums leading-none"
+                      className="block text-[28px] font-semibold text-aria-text1 tracking-h1 tabular-nums leading-none"
                     />
-                    <span className="block text-[10px] font-[510] text-aria-text4 uppercase tracking-widest mt-1.5">
+                    <span className="block text-[11px] font-medium text-aria-text3 mt-1.5">
                       {s.label}
                     </span>
                   </GlassCard>
@@ -107,7 +105,7 @@ export default function Dashboard() {
                 {["Web", "arXiv", "Social", "Media"].map((s) => (
                   <span
                     key={s}
-                    className="text-[10px] font-[510] px-2 py-0.5 rounded-full border border-aria-accent/25 text-aria-accent/70 bg-aria-accent/[0.06]"
+                    className="text-[10px] font-medium px-2 py-0.5 rounded-full border border-aria-accent/25 text-aria-accent/70 bg-aria-accent/[0.06]"
                   >
                     {s}
                   </span>
@@ -115,7 +113,7 @@ export default function Dashboard() {
               </div>
               <Button
                 size="sm"
-                className="bg-aria-brand hover:bg-aria-accent text-white text-[11px] h-7 px-3 brand-glow flex-shrink-0 transition-all duration-150"
+                variant="primary" className="h-7 px-3.5 text-[13px] font-medium flex-shrink-0"
                 onClick={(e) => { e.stopPropagation(); navigate("/launch"); }}
               >
                 <Play size={11} className="mr-1.5" /> Launch
@@ -126,7 +124,7 @@ export default function Dashboard() {
           {/* Recent runs */}
           <div>
             <div className="flex items-center justify-between mb-3">
-              <span className="text-[10px] font-[510] text-aria-text4 uppercase tracking-widest">
+              <span className="text-[11px] font-medium text-aria-text3">
                 Recent Runs
               </span>
               <button
@@ -149,13 +147,13 @@ export default function Dashboard() {
                 <div className="w-12 h-12 rounded-2xl bg-aria-accent/10 flex items-center justify-center mx-auto mb-4">
                   <BarChart2 size={22} className="text-aria-accent/60" />
                 </div>
-                <p className="text-aria-text2 text-[13px] font-[510] mb-1">No runs yet</p>
+                <p className="text-aria-text2 text-[13px] font-medium mb-1">No runs yet</p>
                 <p className="text-aria-text4 text-[11px] mb-5 max-w-[240px] mx-auto leading-relaxed">
                   Start a research run to collect and synthesize data from {sourceCount} sources
                 </p>
                 <Button
                   size="sm"
-                  className="bg-aria-brand hover:bg-aria-accent text-white text-[11px] h-7 px-4 brand-glow"
+                  variant="primary" className="h-7 px-4 text-[13px] font-medium"
                   onClick={() => navigate("/launch")}
                 >
                   <Play size={11} className="mr-1.5" /> Start first run

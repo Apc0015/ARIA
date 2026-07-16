@@ -13,7 +13,7 @@ import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 
 const stagger = { animate: { transition: { staggerChildren: 0.04 } } };
-const item = { initial: { opacity: 0, y: 8 }, animate: { opacity: 1, y: 0, transition: { duration: 0.18 } } };
+const item = {}; // entrance handled at page level
 
 export default function Report() {
   const { runId } = useParams<{ runId: string }>();
@@ -55,7 +55,7 @@ export default function Report() {
           action={
             <Button
               size="sm"
-              className="bg-aria-brand hover:bg-aria-accent text-white text-[11px] h-7 px-3 brand-glow"
+              variant="primary" className="h-7 px-3.5 text-[13px] font-medium"
               onClick={() => navigate("/launch")}
             >
               <Play size={11} className="mr-1.5" /> New Run
@@ -68,7 +68,7 @@ export default function Report() {
             [1, 2, 3].map((i) => <div key={i} className="glass rounded-lg h-14 animate-pulse" />)
           ) : shownRuns.length === 0 ? (
             <GlassCard className="p-8 text-center">
-              <p className="text-[13px] font-[510] text-aria-text2">No reports yet</p>
+              <p className="text-[13px] font-medium text-aria-text2">No reports yet</p>
               <p className="mt-1 text-[11px] text-aria-text4">Completed runs will appear here with export options.</p>
             </GlassCard>
           ) : (
@@ -130,7 +130,7 @@ export default function Report() {
             <GlassCard className="p-5 space-y-4">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-[18px] font-[590] text-aria-text1 tracking-body-lg">
+                  <h2 className="text-[18px] font-semibold text-aria-text1 tracking-body-lg">
                     {run?.topic ?? "Research Run"}
                   </h2>
                   <p className="text-[12px] text-aria-text4 mt-1">
@@ -169,7 +169,7 @@ export default function Report() {
           {/* Documents table */}
           {docs.length > 0 && (
             <motion.div variants={item}>
-              <p className="text-[10px] font-[510] text-aria-text4 uppercase tracking-widest mb-2">
+              <p className="text-[11px] font-medium text-aria-text3 mb-2">
                 Documents ({totalDocs.toLocaleString()})
               </p>
               <GlassCard className="overflow-hidden">
@@ -178,7 +178,7 @@ export default function Report() {
                     <thead>
                       <tr className="border-b border-[var(--aria-border)]">
                         {["Title", "Source", "Score"].map((h) => (
-                          <th key={h} className="text-left p-3 text-[10px] font-[510] text-aria-text4 uppercase tracking-wide">
+                          <th key={h} className="text-left p-3 text-[11px] font-medium text-aria-text3">
                             {h}
                           </th>
                         ))}
@@ -195,7 +195,7 @@ export default function Report() {
                             ) : doc.title}
                           </td>
                           <td className="p-3">
-                            <span className="text-[10px] font-[510] text-aria-accent bg-aria-accent/[0.08] border border-aria-accent/20 px-1.5 py-0.5 rounded">
+                            <span className="text-[10px] font-medium text-aria-accent bg-aria-accent/[0.08] border border-aria-accent/20 px-1.5 py-0.5 rounded">
                               {doc.source}
                             </span>
                           </td>

@@ -40,7 +40,8 @@ export default function Monitor() {
           action={
             <Button
               size="sm"
-              className="bg-aria-brand hover:bg-aria-accent text-white text-[11px] h-7 px-3 brand-glow"
+              variant="primary"
+              className="h-7 px-3.5 text-[13px] font-medium"
               onClick={() => navigate("/launch")}
             >
               <Play size={11} className="mr-1.5" /> New Run
@@ -53,7 +54,7 @@ export default function Monitor() {
             [1, 2, 3].map((i) => <div key={i} className="glass rounded-lg h-14 animate-pulse" />)
           ) : shownRuns.length === 0 ? (
             <GlassCard className="p-8 text-center">
-              <p className="text-[13px] font-[510] text-aria-text2">No runs to monitor</p>
+              <p className="text-[13px] font-medium text-aria-text2">No runs to monitor</p>
               <p className="mt-1 text-[11px] text-aria-text4">Start a run to see live collection and cleaning progress.</p>
             </GlassCard>
           ) : (
@@ -85,12 +86,12 @@ export default function Monitor() {
         <GlassCard className="p-4 space-y-3">
           <div className="flex items-center gap-3">
             <StatusDot status={run?.status ?? "pending"} />
-            <span className="text-[13px] font-[510] text-aria-text2 flex-1">
+            <span className="text-[13px] font-medium text-aria-text2 flex-1">
               {run?.message ?? "Initializing…"}
             </span>
             <NumberTicker
               value={totalDocs}
-              className="text-[20px] font-[590] text-aria-text1 tabular-nums tracking-h3"
+              className="text-[20px] font-semibold text-aria-text1 tabular-nums tracking-h3"
               suffix=" docs"
             />
           </div>
@@ -106,7 +107,7 @@ export default function Monitor() {
 
         {/* Per-source pipeline */}
         <div>
-          <p className="text-[10px] font-[510] text-aria-text4 uppercase tracking-widest mb-2">
+          <p className="text-[11px] font-medium text-aria-text3 mb-2">
             Source Pipeline
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -115,15 +116,14 @@ export default function Monitor() {
               return (
                 <motion.div
                   key={src.id}
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
+                  initial={false}
                   transition={{ delay: i * 0.04 }}
                 >
                   <GlassCard className={`p-3 flex items-center gap-2 ${sourceActive ? "border-aria-accent/20" : ""}`}>
                     <span className="text-base">{src.icon}</span>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 mb-1">
-                        <span className="text-[11px] font-[510] text-aria-text2 truncate">{src.name}</span>
+                        <span className="text-[11px] font-medium text-aria-text2 truncate">{src.name}</span>
                         {sourceActive && (
                           <span className="w-1.5 h-1.5 rounded-full bg-aria-accent animate-pulse-dot" />
                         )}
@@ -140,7 +140,7 @@ export default function Monitor() {
                         )}
                       </div>
                     </div>
-                    <span className="text-[11px] font-[590] text-aria-text1 tabular-nums w-8 text-right">
+                    <span className="text-[11px] font-semibold text-aria-text1 tabular-nums w-8 text-right">
                       {sourceActive ? "…" : "—"}
                     </span>
                   </GlassCard>
@@ -153,19 +153,18 @@ export default function Monitor() {
         {/* Document stream */}
         {docs.length > 0 && (
           <div>
-            <p className="text-[10px] font-[510] text-aria-text4 uppercase tracking-widest mb-2">
+            <p className="text-[11px] font-medium text-aria-text3 mb-2">
               Latest Documents
             </p>
             <div className="space-y-1.5">
               {docs.slice(0, 10).map((doc, i) => (
                 <motion.div
                   key={doc.id ?? doc.url ?? i}
-                  initial={{ opacity: 0, x: -8 }}
-                  animate={{ opacity: 1, x: 0 }}
+                  initial={false}
                   transition={{ delay: i * 0.03 }}
                 >
                   <GlassCard className="p-3 flex items-center gap-3">
-                    <span className="text-[10px] font-[510] text-aria-accent uppercase px-1.5 py-0.5 rounded bg-aria-accent/[0.08] border border-aria-accent/20 flex-shrink-0">
+                    <span className="text-[10px] font-medium text-aria-accent uppercase px-1.5 py-0.5 rounded bg-aria-accent/[0.08] border border-aria-accent/20 flex-shrink-0">
                       {doc.source}
                     </span>
                     <span className="text-[12px] text-aria-text2 truncate flex-1">{doc.title}</span>
@@ -183,9 +182,9 @@ export default function Monitor() {
 
         {/* Completion notice */}
         {(run?.status === "completed" || run?.status === "failed") && (
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+          <motion.div initial={false}>
             <GlassCard className="p-4 text-center border-aria-success/20">
-              <p className={`text-[13px] font-[510] tracking-caption ${run.status === "completed" ? "text-aria-success" : "text-red-400"}`}>
+              <p className={`text-[13px] font-medium tracking-caption ${run.status === "completed" ? "text-aria-success" : "text-red-400"}`}>
                 {run.status === "completed" ? "✓ Run complete — redirecting to report…" : "✗ Run failed"}
               </p>
               {run.error && <p className="text-aria-text4 text-[11px] mt-1">{run.error}</p>}

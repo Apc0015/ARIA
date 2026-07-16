@@ -18,11 +18,11 @@ export function PageTopbar({ title, subtitle, action, className }: PageTopbarPro
         className
       )}
     >
-      <span className="text-[13px] font-[590] text-aria-text1 tracking-caption">{title}</span>
+      <span className="text-[13px] font-semibold text-aria-text1 tracking-caption">{title}</span>
       {subtitle && (
         <>
-          <span className="text-aria-text4 text-[13px] font-[510]">/</span>
-          <span className="text-[13px] font-[510] text-aria-text4 truncate max-w-[240px]">{subtitle}</span>
+          <span className="text-aria-text4 text-[13px] font-medium">/</span>
+          <span className="text-[13px] font-medium text-aria-text4 truncate max-w-[240px]">{subtitle}</span>
         </>
       )}
       <div className="flex-1" />

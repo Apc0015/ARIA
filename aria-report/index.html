@@ -1,18 +1,13 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
-    <!-- Apply saved theme before paint (no-flash) -->
-    <script>(function(){var t=localStorage.getItem('aria-theme');document.documentElement.className=(t==='light'?'light':'dark');})();</script>
+    <!-- Apply appearance before paint: saved choice, else system preference -->
+    <script>(function(){var t=localStorage.getItem('aria-theme');if(t!=='light'&&t!=='dark'){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.className=t;})();</script>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="ARIA — automated research collection and intelligence. Give it a topic; it gathers, cleans, and scores the evidence." />
     <title>ARIA</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <!-- Inter Variable — full weight + optical size axis -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet" />
-    <!-- JetBrains Mono — Berkeley Mono substitute for code/technical labels -->
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   </head>
   <body>
     <div id="root"></div>

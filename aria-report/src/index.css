@@ -2,523 +2,386 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  /* ── Dark theme (default) ── */
-  :root,
-  html.dark {
-    /* shadcn/ui HSL tokens */
-    --background: 210 11% 4%;
-    --foreground: 180 3% 97%;
-    --card: 210 6% 6%;
-    --card-foreground: 180 3% 97%;
-    --popover: 210 4% 10%;
-    --popover-foreground: 180 3% 97%;
-    --primary: 235 54% 60%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 210 4% 10%;
-    --secondary-foreground: 216 17% 65%;
-    --muted: 210 4% 10%;
-    --muted-foreground: 220 6% 57%;
-    --accent: 241 100% 72%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 63% 55%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 210 6% 8%;
-    --input: 210 6% 8%;
-    --ring: 241 100% 72%;
-    --radius: 0.5rem;
+/*
+  ARIA design system — Apple HIG language.
 
-    /* ── ARIA design tokens (Linear-inspired) ── */
-    --aria-bg:          #08090a;   /* marketing black */
-    --aria-panel:       #0f1011;   /* sidebar/panel */
-    --aria-surface:     #191a1b;   /* elevated surface */
-    --aria-surface-2:   #28282c;   /* hover / highest surface */
-    --aria-text-1:      #f7f8f8;   /* primary — near-white */
-    --aria-text-2:      #d0d6e0;   /* secondary — silver gray */
-    --aria-text-3:      #8a8f98;   /* tertiary — muted */
-    --aria-text-4:      #62666d;   /* quaternary — subtle */
-    --aria-brand:       #5e6ad2;   /* brand indigo — CTA backgrounds */
-    --aria-accent:      #7170ff;   /* accent violet — interactive */
-    --aria-accent-hover:#828fff;   /* accent hover */
-    --aria-success:     #10b981;
-    --aria-border:      rgba(255,255,255,0.08);   /* standard border */
-    --aria-border-subtle: rgba(255,255,255,0.05); /* subtle border */
+  Principles:
+  - San Francisco via the system stack; weights 400/500/600 only.
+  - One accent: system blue. Neutral gray family everywhere else.
+  - Light appearance by default, true dark appearance as an equal citizen.
+  - Opaque content surfaces; translucency reserved for chrome (sidebar,
+    popovers) — never for content cards.
+  - Hairline separators, soft diffuse shadows, continuous corner radii.
+  - No glows, no grids, no gradients-as-decoration.
+*/
+
+@layer base {
+  /* ── Light appearance (default) ── */
+  :root,
+  html.light {
+    /* shadcn/ui HSL tokens */
+    --background: 240 9% 96%;          /* #f5f5f7 */
+    --foreground: 240 3% 12%;          /* #1d1d1f */
+    --card: 0 0% 100%;
+    --card-foreground: 240 3% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 3% 12%;
+    --primary: 206 100% 45%;           /* #0071e3 */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 5% 93%;
+    --secondary-foreground: 240 2% 26%;
+    --muted: 240 5% 93%;
+    --muted-foreground: 240 2% 44%;    /* #6e6e73 */
+    --accent: 206 100% 45%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 3 100% 59%;         /* #ff3b30 */
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 6% 88%;
+    --input: 240 6% 88%;
+    --ring: 206 100% 45%;
+    --radius: 0.75rem;
+
+    /* ── ARIA tokens ── */
+    --aria-bg:          #f5f5f7;   /* canvas */
+    --aria-panel:       rgba(250, 250, 252, 0.82);  /* chrome material */
+    --aria-surface:     #ffffff;   /* content card */
+    --aria-surface-2:   #f5f5f7;   /* inset / grouped fill */
+    --aria-text-1:      #1d1d1f;   /* primary label */
+    --aria-text-2:      #424245;   /* secondary label */
+    --aria-text-3:      #6e6e73;   /* tertiary label */
+    --aria-text-4:      #86868b;   /* quaternary label */
+    --aria-brand:       #0071e3;   /* system blue — the only accent */
+    --aria-accent:      #0071e3;
+    --aria-accent-hover:#0077ed;
+    --aria-success:     #248a3d;   /* system green, tuned for light bg */
+    --aria-border:      rgba(0, 0, 0, 0.10);
+    --aria-border-subtle: rgba(0, 0, 0, 0.06);
   }
 
-  /* ── Light theme ── */
-  html.light {
-    --background: 220 14% 96%;
-    --foreground: 225 15% 8%;
-    --card: 220 13% 93%;
-    --card-foreground: 225 15% 8%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 225 15% 8%;
-    --primary: 235 54% 57%;
+  /* ── Dark appearance ── */
+  html.dark {
+    --background: 0 0% 0%;
+    --foreground: 240 9% 96%;
+    --card: 240 3% 12%;                /* #1d1d1f */
+    --card-foreground: 240 9% 96%;
+    --popover: 240 3% 12%;
+    --popover-foreground: 240 9% 96%;
+    --primary: 211 100% 52%;           /* #0a84ff */
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 13% 90%;
-    --secondary-foreground: 225 10% 30%;
-    --muted: 220 13% 90%;
-    --muted-foreground: 220 8% 46%;
-    --accent: 241 90% 60%;
+    --secondary: 240 2% 17%;
+    --secondary-foreground: 240 6% 83%;
+    --muted: 240 2% 17%;
+    --muted-foreground: 240 2% 64%;    /* #a1a1a6 */
+    --accent: 211 100% 52%;
     --accent-foreground: 0 0% 100%;
-    --destructive: 0 63% 50%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 220 13% 87%;
-    --input: 220 13% 87%;
-    --ring: 241 90% 60%;
-    --radius: 0.5rem;
+    --destructive: 3 100% 61%;         /* #ff453a */
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 2% 16%;
+    --input: 240 2% 16%;
+    --ring: 211 100% 52%;
+    --radius: 0.75rem;
 
-    --aria-bg:          #f5f6f8;
-    --aria-panel:       #eef0f4;
-    --aria-surface:     #e4e7ed;
-    --aria-surface-2:   #d8dce6;
-    --aria-text-1:      #0e0f12;
-    --aria-text-2:      #1e2230;
-    --aria-text-3:      #4a5168;
-    --aria-text-4:      #8a8f98;
-    --aria-brand:       #5e6ad2;
-    --aria-accent:      #4f4ef0;
-    --aria-accent-hover:#6160ff;
-    --aria-success:     #059669;
-    --aria-border:      rgba(0,0,0,0.08);
-    --aria-border-subtle: rgba(0,0,0,0.05);
+    --aria-bg:          #000000;
+    --aria-panel:       rgba(22, 22, 23, 0.85);
+    --aria-surface:     #1d1d1f;
+    --aria-surface-2:   #2c2c2e;
+    --aria-text-1:      #f5f5f7;
+    --aria-text-2:      #d2d2d7;
+    --aria-text-3:      #a1a1a6;
+    --aria-text-4:      #86868b;
+    --aria-brand:       #0a84ff;
+    --aria-accent:      #0a84ff;
+    --aria-accent-hover:#2997ff;
+    --aria-success:     #30d158;
+    --aria-border:      rgba(255, 255, 255, 0.12);
+    --aria-border-subtle: rgba(255, 255, 255, 0.07);
   }
 
   * {
     @apply border-border;
-    /* Linear's OpenType features — geometric alternates, essential to the aesthetic */
-    font-feature-settings: "cv01", "ss03";
   }
 
   html, body {
     background-color: var(--aria-bg);
     color: var(--aria-text-1);
-    /* Inter Variable — full axis access */
-    font-family: 'Inter', 'Inter Variable', -apple-system, 'SF Pro Display', system-ui, sans-serif;
+    /* San Francisco on Apple platforms; high-grade fallbacks elsewhere */
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text",
+      "SF Pro Display", "Helvetica Neue", Helvetica, Arial, system-ui,
+      sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    transition: background-color 0.18s ease, color 0.18s ease;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  /* Keyboard focus: a soft system-blue halo, never removed */
+  :focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--aria-accent) 35%, transparent);
+    border-radius: 6px;
   }
 }
 
-/* ── Elevation system (Linear-style luminance stepping) ── */
+/* ── Surfaces & materials ── */
 @layer utilities {
   /*
-    Linear doesn't use shadows for elevation — it uses background opacity steps.
-    Each level increases white opacity slightly:  0.02 → 0.03 → 0.05
-    Borders are always semi-transparent white, never solid.
+    Content cards are OPAQUE. Translucency ("materials") is reserved for
+    chrome: sidebars, toolbars, popovers. That is how Apple layers depth.
   */
 
-  /* Level 2: Standard card surface */
+  /* Standard content card */
   .glass {
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-  }
-  /* Level 1: Subtle inset / de-emphasized */
-  .glass-subtle {
-    background: rgba(255, 255, 255, 0.015);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-  }
-  /* Level 3: Elevated (dropdowns, modals, featured cards) */
-  .glass-elevated {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.10);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    /* Dialog-style multi-layer shadow for true elevation */
+    background: var(--aria-surface);
+    border: 1px solid var(--aria-border-subtle);
     box-shadow:
-      rgba(0,0,0,0) 0px 8px 2px,
-      rgba(0,0,0,0.01) 0px 5px 2px,
-      rgba(0,0,0,0.04) 0px 3px 2px,
-      rgba(0,0,0,0.07) 0px 1px 1px,
-      rgba(0,0,0,0.08) 0px 0px 1px;
+      0 1px 1px rgba(0, 0, 0, 0.02),
+      0 4px 12px rgba(0, 0, 0, 0.04);
+  }
+  html.dark .glass {
+    box-shadow: none;
+    border-color: rgba(255, 255, 255, 0.06);
   }
 
-  /* Light mode overrides */
-  html.light .glass {
-    background: rgba(255, 255, 255, 0.68);
-    border: 1px solid rgba(0, 0, 0, 0.07);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  /* Inset / grouped fill (quiet, de-emphasized) */
+  .glass-subtle {
+    background: var(--aria-surface-2);
+    border: 1px solid transparent;
   }
-  html.light .glass-subtle {
-    background: rgba(255, 255, 255, 0.45);
-    border: 1px solid rgba(0, 0, 0, 0.05);
-  }
-  html.light .glass-elevated {
-    background: rgba(255, 255, 255, 0.92);
-    border: 1px solid rgba(0, 0, 0, 0.09);
-    box-shadow: 0 4px 16px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.04);
-  }
-
-  /* ── Ghost button (Linear style) ── */
-  .btn-ghost {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgb(36, 40, 44);
-    color: var(--aria-text-2);
-    border-radius: 6px;
-    transition: background 0.12s ease, color 0.12s ease;
-  }
-  .btn-ghost:hover {
+  html.dark .glass-subtle {
     background: rgba(255, 255, 255, 0.05);
+  }
+
+  /* Elevated material — popovers, menus, featured surfaces */
+  .glass-elevated {
+    background: color-mix(in srgb, var(--aria-surface) 78%, transparent);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid var(--aria-border-subtle);
+    box-shadow:
+      0 0 1px rgba(0, 0, 0, 0.14),
+      0 10px 40px rgba(0, 0, 0, 0.12);
+  }
+  html.dark .glass-elevated {
+    border-color: rgba(255, 255, 255, 0.10);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55);
+  }
+
+  /* Chrome material — sidebar / toolbar */
+  .material-chrome {
+    background: var(--aria-panel);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+  }
+
+  /* ── Buttons ── */
+
+  /* Secondary button — quiet gray fill, no border */
+  .btn-ghost {
+    background: rgba(0, 0, 0, 0.045);
+    border: 1px solid transparent;
+    color: var(--aria-text-1);
+    border-radius: 8px;
+    transition: background 0.15s ease, transform 0.1s ease;
+  }
+  .btn-ghost:hover { background: rgba(0, 0, 0, 0.08); }
+  .btn-ghost:active { transform: scale(0.98); }
+  html.dark .btn-ghost {
+    background: rgba(255, 255, 255, 0.10);
     color: var(--aria-text-1);
   }
-  html.light .btn-ghost {
-    background: rgba(0, 0, 0, 0.02);
-    border: 1px solid rgba(0, 0, 0, 0.12);
-    color: var(--aria-text-2);
-  }
-  html.light .btn-ghost:hover {
-    background: rgba(0, 0, 0, 0.05);
-  }
+  html.dark .btn-ghost:hover { background: rgba(255, 255, 255, 0.16); }
 
-  /* ── Subtle toolbar button (Linear micro) ── */
+  /* Small quiet control */
   .btn-toolbar {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    color: var(--aria-text-4);
-    border-radius: 2px;
-    box-shadow: rgba(0,0,0,0.03) 0px 1.2px 0px 0px;
+    background: rgba(0, 0, 0, 0.04);
+    border: 1px solid transparent;
+    color: var(--aria-text-3);
+    border-radius: 6px;
     font-size: 12px;
-    font-weight: 510;
-    padding: 2px 6px;
-    transition: background 0.12s ease, color 0.12s ease;
+    font-weight: 500;
+    padding: 2px 8px;
+    transition: background 0.15s ease, color 0.15s ease;
   }
   .btn-toolbar:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: var(--aria-text-2);
+    background: rgba(0, 0, 0, 0.07);
+    color: var(--aria-text-1);
+  }
+  html.dark .btn-toolbar { background: rgba(255, 255, 255, 0.08); }
+  html.dark .btn-toolbar:hover {
+    background: rgba(255, 255, 255, 0.14);
+    color: var(--aria-text-1);
   }
 
-  /* ── Atmospheric background ── */
-  .aria-atmo-glow {
-    background:
-      radial-gradient(ellipse 65% 30% at 65% 0%, rgba(113,112,255,0.07) 0%, transparent 65%),
-      radial-gradient(ellipse 35% 20% at 5% 85%, rgba(94,106,210,0.04) 0%, transparent 55%);
-  }
-  html.light .aria-atmo-glow {
-    background:
-      radial-gradient(ellipse 65% 30% at 65% 0%, rgba(79,78,240,0.04) 0%, transparent 65%),
-      radial-gradient(ellipse 35% 20% at 5% 85%, rgba(94,106,210,0.03) 0%, transparent 55%);
-  }
+  /* ── Retired decorations (kept as no-ops so pages need no edits) ── */
+  .aria-atmo-glow { background: none; }
+  .aria-grid { background-image: none; }
+  .stat-accent-bar::before { content: none; }
+  .specular-top::before { content: none; }
+  .inset-glow::after { content: none; }
+  .status-glow-violet { box-shadow: none; }
+  .status-glow-green { box-shadow: none; }
+  .brand-glow { box-shadow: none; }
 
-  /* ── Subtle grid texture ── */
-  .aria-grid {
-    background-image:
-      linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
-    background-size: 44px 44px;
-  }
-  html.light .aria-grid {
-    background-image:
-      linear-gradient(rgba(0,0,0,0.035) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(0,0,0,0.035) 1px, transparent 1px);
-    background-size: 44px 44px;
-  }
-
-  /* ── Stat card accent top bar ── */
-  .stat-accent-bar::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 1px;
-    border-radius: 10px 10px 0 0;
-    background: var(--stat-accent, var(--aria-accent));
-    opacity: 0.6;
-  }
-
-  /* ── Specular highlight ── */
-  .specular-top::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 12%; right: 12%;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.14), transparent);
-    border-radius: inherit;
-    pointer-events: none;
-  }
-  html.light .specular-top::before {
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.85), transparent);
-  }
-
-  .inset-glow::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(160deg, rgba(255,255,255,0.025) 0%, transparent 45%);
-    border-radius: inherit;
-    pointer-events: none;
-  }
-
-  /* ── Status dots ── */
-  .status-glow-violet { box-shadow: 0 0 6px rgba(113,112,255,0.55); }
-  .status-glow-green  { box-shadow: 0 0 6px rgba(16,185,129,0.50); }
-
-  /* ── Brand glow — CTAs only ── */
-  .brand-glow { box-shadow: 0 0 16px rgba(94,106,210,0.30); }
-
-  /* ── Sidebar active state ── */
+  /* ── Sidebar selection — quiet fill, accent glyph ── */
   .sidebar-active {
-    background: rgba(113, 112, 255, 0.10);
-    box-shadow: inset 0 0 0 1px rgba(113,112,255,0.18);
+    background: rgba(0, 0, 0, 0.06);
+    box-shadow: none;
   }
-  html.light .sidebar-active {
-    background: rgba(79, 78, 240, 0.09);
-    box-shadow: inset 0 0 0 1px rgba(79,78,240,0.16);
+  html.dark .sidebar-active {
+    background: rgba(255, 255, 255, 0.10);
   }
 
-  /* ── Code / mono text ── */
+  /* ── Monospace — SF Mono family ── */
   .font-mono {
-    font-family: 'JetBrains Mono', 'Berkeley Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    font-family: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Monaco,
+      "Cascadia Mono", monospace;
     font-feature-settings: normal;
   }
 
-  .brand-glow {
-    box-shadow: 0 0 20px rgba(94, 106, 210, 0.35);
-  }
+  /* Data readouts: digits align in columns */
+  .tabular-nums { font-variant-numeric: tabular-nums; }
 
-  /* ── Typography Hierarchy (DESIGN.md) ── */
-  /* Display sizes */
+  /* ── Typography — SF scale ── */
+  /* Display */
   .text-display-xl {
-    font-size: 4.5rem;
-    font-weight: 510;
-    line-height: 1;
-    letter-spacing: -1.584px;
+    font-size: 4rem;
+    font-weight: 600;
+    line-height: 1.05;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
   }
   .text-display-lg {
-    font-size: 4rem;
-    font-weight: 510;
-    line-height: 1;
-    letter-spacing: -1.408px;
+    font-size: 3.5rem;
+    font-weight: 600;
+    line-height: 1.07;
+    letter-spacing: -0.012em;
+    text-wrap: balance;
   }
   .text-display {
-    font-size: 3rem;
-    font-weight: 510;
-    line-height: 1;
-    letter-spacing: -1.056px;
+    font-size: 2.75rem;
+    font-weight: 600;
+    line-height: 1.08;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
   }
 
-  /* Headings */
+  /* Titles */
   .text-heading-1 {
     font-size: 2rem;
-    font-weight: 400;
-    line-height: 1.13;
-    letter-spacing: -0.704px;
+    font-weight: 600;
+    line-height: 1.125;
+    letter-spacing: -0.009em;
+    text-wrap: balance;
   }
   .text-heading-2 {
     font-size: 1.5rem;
-    font-weight: 400;
-    line-height: 1.33;
-    letter-spacing: -0.288px;
+    font-weight: 600;
+    line-height: 1.25;
+    letter-spacing: -0.007em;
   }
   .text-heading-3 {
     font-size: 1.25rem;
-    font-weight: 590;
-    line-height: 1.33;
-    letter-spacing: -0.24px;
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: -0.005em;
   }
 
-  /* Body text */
+  /* Body */
   .text-body-lg {
     font-size: 1.125rem;
     font-weight: 400;
-    line-height: 1.6;
-    letter-spacing: -0.165px;
+    line-height: 1.55;
+    letter-spacing: -0.002em;
   }
   .text-body-emphasis {
     font-size: 1.0625rem;
-    font-weight: 590;
-    line-height: 1.6;
-    letter-spacing: 0;
+    font-weight: 600;
+    line-height: 1.55;
   }
-  .text-body {
-    font-size: 1rem;
-    font-weight: 400;
-    line-height: 1.5;
-    letter-spacing: 0;
-  }
-  .text-body-medium {
-    font-size: 1rem;
-    font-weight: 510;
-    line-height: 1.5;
-    letter-spacing: 0;
-  }
-  .text-body-semibold {
-    font-size: 1rem;
-    font-weight: 590;
-    line-height: 1.5;
-    letter-spacing: 0;
-  }
+  .text-body { font-size: 1rem; font-weight: 400; line-height: 1.5; }
+  .text-body-medium { font-size: 1rem; font-weight: 500; line-height: 1.5; }
+  .text-body-semibold { font-size: 1rem; font-weight: 600; line-height: 1.5; }
 
-  /* Small text */
-  .text-small {
-    font-size: 0.9375rem;
-    font-weight: 400;
-    line-height: 1.6;
-    letter-spacing: -0.165px;
-  }
-  .text-small-medium {
-    font-size: 0.9375rem;
-    font-weight: 510;
-    line-height: 1.6;
-    letter-spacing: -0.165px;
-  }
-  .text-small-semibold {
-    font-size: 0.9375rem;
-    font-weight: 590;
-    line-height: 1.6;
-    letter-spacing: -0.165px;
-  }
-  .text-small-light {
-    font-size: 0.9375rem;
-    font-weight: 300;
-    line-height: 1.47;
-    letter-spacing: -0.165px;
-  }
+  /* Small */
+  .text-small { font-size: 0.9375rem; font-weight: 400; line-height: 1.5; }
+  .text-small-medium { font-size: 0.9375rem; font-weight: 500; line-height: 1.5; }
+  .text-small-semibold { font-size: 0.9375rem; font-weight: 600; line-height: 1.5; }
+  .text-small-light { font-size: 0.9375rem; font-weight: 400; line-height: 1.45; }
 
-  /* Caption text */
-  .text-caption-lg {
-    font-size: 0.875rem;
-    font-weight: 510;
-    line-height: 1.5;
-    letter-spacing: -0.182px;
-  }
-  .text-caption {
-    font-size: 0.8125rem;
-    font-weight: 400;
-    line-height: 1.5;
-    letter-spacing: -0.13px;
-  }
+  /* Footnote / caption */
+  .text-caption-lg { font-size: 0.875rem; font-weight: 500; line-height: 1.45; }
+  .text-caption { font-size: 0.8125rem; font-weight: 400; line-height: 1.45; }
 
-  /* Label text */
-  .text-label {
-    font-size: 0.75rem;
-    font-weight: 400;
-    line-height: 1.4;
-    letter-spacing: 0;
-  }
-  .text-label-semibold {
-    font-size: 0.75rem;
-    font-weight: 590;
-    line-height: 1.4;
-    letter-spacing: 0;
-  }
+  /* Labels */
+  .text-label { font-size: 0.75rem; font-weight: 400; line-height: 1.4; }
+  .text-label-semibold { font-size: 0.75rem; font-weight: 600; line-height: 1.4; }
 
-  /* Micro & Tiny */
+  /* Micro & tiny — sentence-case, letter-spaced, never shouted */
   .text-micro {
     font-size: 0.6875rem;
-    font-weight: 510;
+    font-weight: 500;
     line-height: 1.4;
-    letter-spacing: 0;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
   }
-  .text-tiny {
-    font-size: 0.625rem;
-    font-weight: 400;
-    line-height: 1.5;
-    letter-spacing: -0.15px;
-  }
+  .text-tiny { font-size: 0.625rem; font-weight: 400; line-height: 1.5; }
 
-  /* Link variants */
-  .text-link-lg {
-    font-size: 1rem;
-    font-weight: 400;
-    line-height: 1.5;
-    letter-spacing: 0;
-  }
-  .text-link-md {
-    font-size: 0.9375rem;
-    font-weight: 510;
-    line-height: 2.67;
-    letter-spacing: 0;
-  }
-  .text-link-sm {
-    font-size: 0.875rem;
-    font-weight: 510;
-    line-height: 1.5;
-    letter-spacing: 0;
-  }
-  .text-link-caption {
-    font-size: 0.8125rem;
-    font-weight: 400;
-    line-height: 1.5;
-    letter-spacing: -0.13px;
-  }
+  /* Links */
+  .text-link-lg { font-size: 1rem; font-weight: 400; line-height: 1.5; }
+  .text-link-md { font-size: 0.9375rem; font-weight: 500; line-height: 2.4; }
+  .text-link-sm { font-size: 0.875rem; font-weight: 500; line-height: 1.5; }
+  .text-link-caption { font-size: 0.8125rem; font-weight: 400; line-height: 1.5; }
 
-  /* Monospace */
+  /* Monospace variants */
   .mono-body {
-    font-family: 'Berkeley Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
     font-size: 0.875rem;
-    font-weight: 400;
     line-height: 1.5;
-    letter-spacing: 0;
   }
   .mono-caption {
-    font-family: 'Berkeley Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
     font-size: 0.8125rem;
-    font-weight: 400;
     line-height: 1.5;
-    letter-spacing: 0;
   }
   .mono-label {
-    font-family: 'Berkeley Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
     font-size: 0.75rem;
-    font-weight: 400;
     line-height: 1.4;
-    letter-spacing: 0;
   }
 
-  /* ── Elevation Shadows (DESIGN.md) ── */
-  .shadow-elevation-subtle {
-    box-shadow: rgba(0, 0, 0, 0.03) 0px 1.2px 0px 0px;
-  }
-  .shadow-elevation-surface {
-    box-shadow: rgba(255, 255, 255, 0.05) 0px 0px 0px 1px;
-  }
-  .shadow-elevation-inset {
-    box-shadow: rgba(0, 0, 0, 0.2) 0px 0px 12px 0px inset;
-  }
-  .shadow-elevation-ring {
-    box-shadow: rgba(0, 0, 0, 0.2) 0px 0px 0px 1px;
-  }
-  .shadow-elevation-elevated {
-    box-shadow: rgba(0, 0, 0, 0.4) 0px 2px 4px;
-  }
+  /* ── Elevation shadows ── */
+  .shadow-elevation-subtle { box-shadow: 0 1px 1px rgba(0, 0, 0, 0.03); }
+  .shadow-elevation-surface { box-shadow: 0 0 0 1px var(--aria-border-subtle); }
+  .shadow-elevation-inset { box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06); }
+  .shadow-elevation-ring { box-shadow: 0 0 0 1px var(--aria-border); }
+  .shadow-elevation-elevated { box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08); }
   .shadow-elevation-dialog {
-    box-shadow:
-      rgba(0, 0, 0, 0) 0px 8px 2px,
-      rgba(0, 0, 0, 0.01) 0px 5px 2px,
-      rgba(0, 0, 0, 0.04) 0px 3px 2px,
-      rgba(0, 0, 0, 0.07) 0px 1px 1px,
-      rgba(0, 0, 0, 0.08) 0px 0px 1px;
+    box-shadow: 0 0 1px rgba(0, 0, 0, 0.14), 0 16px 48px rgba(0, 0, 0, 0.16);
   }
-  .shadow-elevation-focus {
-    box-shadow: rgba(0, 0, 0, 0.1) 0px 4px 12px;
-  }
+  .shadow-elevation-focus { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.10); }
 
-  /* Light mode shadow overrides */
-  html.light .shadow-elevation-surface {
-    box-shadow: rgba(0, 0, 0, 0.05) 0px 0px 0px 1px;
-  }
-  html.light .shadow-elevation-inset {
-    box-shadow: rgba(0, 0, 0, 0.1) 0px 0px 12px 0px inset;
-  }
+  html.dark .shadow-elevation-elevated { box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5); }
+  html.dark .shadow-elevation-dialog { box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6); }
 
-  /* ── Letter-spacing helpers (Linear typographic scale) ── */
-  .tracking-display-xl  { letter-spacing: -1.584px; } /* 72px */
-  .tracking-display-lg  { letter-spacing: -1.408px; } /* 64px */
-  .tracking-display     { letter-spacing: -1.056px; } /* 48px */
-  .tracking-h1          { letter-spacing: -0.704px; } /* 32px */
-  .tracking-h2          { letter-spacing: -0.288px; } /* 24px */
-  .tracking-h3          { letter-spacing: -0.24px;  } /* 20px */
-  .tracking-body-lg     { letter-spacing: -0.165px; } /* 18px / 15px */
-  .tracking-caption     { letter-spacing: -0.13px;  } /* 13px */
+  /* ── Letter-spacing helpers (legacy call sites) ── */
+  .tracking-display-xl { letter-spacing: -0.015em; }
+  .tracking-display-lg { letter-spacing: -0.012em; }
+  .tracking-display { letter-spacing: -0.01em; }
+  .tracking-h1 { letter-spacing: -0.009em; }
+  .tracking-h2 { letter-spacing: -0.007em; }
+  .tracking-h3 { letter-spacing: -0.005em; }
+  .tracking-body-lg { letter-spacing: -0.002em; }
+  .tracking-caption { letter-spacing: 0; }
 }
 
-/* ── Scrollbar ── */
-::-webkit-scrollbar { width: 3px; height: 3px; }
+/* ── Scrollbar — unobtrusive, overlay-style ── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.14); }
-html.light ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.10); }
-html.light ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.18); }
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background-color: rgba(0, 0, 0, 0.30); }
+html.dark ::-webkit-scrollbar-thumb { background-color: rgba(255, 255, 255, 0.20); }
+html.dark ::-webkit-scrollbar-thumb:hover { background-color: rgba(255, 255, 255, 0.32); }

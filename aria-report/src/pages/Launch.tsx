@@ -276,7 +276,7 @@ export default function Launch() {
                       }`}
                       aria-pressed={active}
                     >
-                      <span className={`block text-[12px] font-[590] ${active ? "text-aria-accent" : "text-aria-text2"}`}>
+                      <span className={`block text-[12px] font-semibold ${active ? "text-aria-accent" : "text-aria-text2"}`}>
                         {mode.label}
                       </span>
                       <span className="mt-1 block text-[10px] leading-snug text-aria-text4">
@@ -289,7 +289,7 @@ export default function Launch() {
             </GlassCard>
 
             <GlassCard className="p-4 space-y-2">
-              <Label className="text-[11px] font-[510] text-aria-text4 uppercase tracking-widest">
+              <Label className="text-[11px] font-medium text-aria-text3">
                 Research Topic
               </Label>
               <Textarea
@@ -308,7 +308,7 @@ export default function Launch() {
             </GlassCard>
 
             <Button
-              className="w-full h-11 bg-aria-brand hover:bg-aria-accent text-white font-[510] brand-glow disabled:opacity-40"
+              variant="primary" className="w-full h-11 font-medium text-[15px] disabled:opacity-40"
               onClick={handleTopicSubmit}
               disabled={(launchMode !== "yaml" && !topic.trim()) || directorLoading}
             >
@@ -335,7 +335,7 @@ export default function Launch() {
           <>
             {/* Progress indicator */}
             <div className="flex items-center gap-2 text-[12px] text-aria-text4">
-              <span className="text-aria-text2 font-[510]">{topic}</span>
+              <span className="text-aria-text2 font-medium">{topic}</span>
               {answeredCount > 0 && (
                 <span className="ml-auto flex items-center gap-1">
                   <CheckCircle2 size={12} className="text-aria-accent" />
@@ -347,10 +347,10 @@ export default function Launch() {
             {/* Question card */}
             <GlassCard className="p-5 space-y-4">
               <div className="space-y-1">
-                <p className="text-[10px] font-[510] text-aria-text4 uppercase tracking-widest">
+                <p className="text-[11px] font-medium text-aria-text3">
                   {currentQuestion.category.replace(/_/g, " ")}
                 </p>
-                <p className="text-[16px] font-[510] text-aria-text1 leading-snug">
+                <p className="text-[16px] font-medium text-aria-text1 leading-snug">
                   {currentQuestion.question}
                 </p>
               </div>
@@ -436,10 +436,10 @@ export default function Launch() {
             {/* Brief summary if available */}
             {directorBrief && (
               <GlassCard className="p-4 space-y-2 border-aria-accent/20">
-                <p className="text-[10px] font-[510] text-aria-accent uppercase tracking-widest">
+                <p className="text-[11px] font-medium text-aria-accent">
                   Research Brief Ready
                 </p>
-                <p className="text-[14px] text-aria-text1 font-[510]">
+                <p className="text-[14px] text-aria-text1 font-medium">
                   {(directorBrief.resolved_topic as string) || topic}
                 </p>
                 {Array.isArray(directorBrief.key_questions) &&
@@ -463,7 +463,7 @@ export default function Launch() {
                     {((directorBrief as Record<string, unknown>).phases as Array<Record<string, unknown>>).map((ph) => (
                       <span
                         key={ph.name as string}
-                        className="text-[10px] font-[510] px-2 py-0.5 rounded-full border border-white/[0.08] text-aria-text4"
+                        className="text-[10px] font-medium px-2 py-0.5 rounded-full border border-white/[0.08] text-aria-text4"
                       >
                         {(ph.name as string).replace(/_/g, " ")}
                       </span>
@@ -476,14 +476,14 @@ export default function Launch() {
             <GlassCard className="p-4 space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-[10px] font-[510] text-aria-text4 uppercase tracking-widest">
+                  <p className="text-[11px] font-medium text-aria-text3">
                     Launch Mode
                   </p>
                   <p className="mt-1 text-[12px] text-aria-text3">
                     {LAUNCH_MODES.find((mode) => mode.id === launchMode)?.description}
                   </p>
                 </div>
-                <span className="text-[10px] font-[590] uppercase tracking-widest text-aria-accent border border-aria-accent/25 bg-aria-accent/[0.08] px-2 py-1 rounded">
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-aria-accent border border-aria-accent/25 bg-aria-accent/[0.08] px-2 py-1 rounded">
                   {launchMode}
                 </span>
               </div>
@@ -498,7 +498,7 @@ export default function Launch() {
                         setLaunchMode(mode.id);
                         if (mode.id === "yaml") setShowYaml(true);
                       }}
-                      className={`rounded-md border px-2 py-1.5 text-[11px] font-[510] transition-colors ${
+                      className={`rounded-md border px-2 py-1.5 text-[11px] font-medium transition-colors ${
                         active
                           ? "border-aria-accent/50 bg-aria-accent/[0.10] text-aria-accent"
                           : "border-white/[0.06] text-aria-text4 hover:text-aria-text2"
@@ -519,7 +519,7 @@ export default function Launch() {
                   setShowYaml((v) => !v);
                   setLaunchMode("yaml");
                 }}
-                className="w-full flex items-center justify-between text-[13px] font-[510] text-aria-text2"
+                className="w-full flex items-center justify-between text-[13px] font-medium text-aria-text2"
               >
                 Mission YAML {launchMode === "yaml" ? "(required)" : "(optional override)"}
                 {showYaml ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -537,7 +537,7 @@ export default function Launch() {
             {/* Source selector */}
             <GlassCard className="p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <Label className="text-[11px] font-[510] text-aria-text4 uppercase tracking-widest">
+                <Label className="text-[11px] font-medium text-aria-text3">
                   Sources
                 </Label>
                 <span className="text-[11px] text-aria-accent">{activeCount} selected</span>
@@ -549,7 +549,7 @@ export default function Launch() {
                 if (catStandardSources.length === 0) return null;
                 return (
                   <div key={cat.id}>
-                    <p className="text-[10px] font-[510] text-aria-text4 uppercase tracking-widest mb-2">
+                    <p className="text-[11px] font-medium text-aria-text3 mb-2">
                       {cat.label}
                     </p>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -564,7 +564,7 @@ export default function Launch() {
                           }`}
                         >
                           <span>{s.icon}</span>
-                          <span className="font-[510] truncate">{s.name}</span>
+                          <span className="font-medium truncate">{s.name}</span>
                         </button>
                       ))}
                     </div>
@@ -579,7 +579,7 @@ export default function Launch() {
                   onClick={() => setShowAdvancedSources((v) => !v)}
                   className="flex w-full items-center justify-between text-[11px] text-aria-text4 hover:text-aria-text2 transition-colors"
                 >
-                  <span className="font-[510] uppercase tracking-widest">
+                  <span className="font-medium uppercase tracking-widest">
                     Advanced Sources
                   </span>
                   {showAdvancedSources ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
@@ -598,7 +598,7 @@ export default function Launch() {
                         }`}
                       >
                         <span>{s.icon}</span>
-                        <span className="font-[510] truncate">{s.name}</span>
+                        <span className="font-medium truncate">{s.name}</span>
                       </button>
                     ))}
                   </div>
@@ -610,7 +610,7 @@ export default function Launch() {
             <GlassCard className="p-4 space-y-3">
               <button
                 onClick={() => setShowConfig((v) => !v)}
-                className="w-full flex items-center justify-between text-[13px] font-[510] text-aria-text2"
+                className="w-full flex items-center justify-between text-[13px] font-medium text-aria-text2"
               >
                 <span>
                   Depth: {DEPTH_LABELS[depth].label}{" "}
@@ -636,7 +636,7 @@ export default function Launch() {
 
             {/* Launch button */}
             <Button
-              className="w-full h-11 bg-aria-brand hover:bg-aria-accent text-white font-[510] brand-glow disabled:opacity-40"
+              variant="primary" className="w-full h-11 font-medium text-[15px] disabled:opacity-40"
               onClick={() => launch.mutate()}
               disabled={!canLaunch}
             >

@@ -12,7 +12,9 @@ function applyTheme(theme: Theme) {
 function getInitialTheme(): Theme {
   const stored = localStorage.getItem("aria-theme") as Theme | null;
   if (stored === "light" || stored === "dark") return stored;
-  return "dark";
+  // Follow the system appearance, like a native app.
+  if (window.matchMedia?.("(prefers-color-scheme: dark)").matches) return "dark";
+  return "light";
 }
 
 export function useTheme() {

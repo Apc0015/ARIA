@@ -49,12 +49,12 @@ function ActiveLLMBadge({ llmStatus }: { llmStatus: LLMStatus | null }) {
   const color = ready ? "text-aria-success border-aria-success/30 bg-aria-success/10"
                       : "text-aria-text4 border-[var(--aria-border)]";
   return (
-    <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-[11px] font-[510] mb-4 ${color}`}>
+    <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-[11px] font-medium mb-4 ${color}`}>
       <Zap size={12} />
       <span>Active LLM:</span>
-      <span className="font-[600] capitalize">{llmStatus.provider}</span>
+      <span className="font-semibold capitalize">{llmStatus.provider}</span>
       <span className="text-aria-text4">/</span>
-      <span className="font-[510]">{llmStatus.model}</span>
+      <span className="font-medium">{llmStatus.model}</span>
       {llmStatus.message && (
         <span className="hidden md:inline text-aria-text4 truncate">{llmStatus.message}</span>
       )}
@@ -206,7 +206,7 @@ export default function Settings() {
         action={
           <Button
             size="sm"
-            className="bg-aria-brand hover:bg-aria-accent text-white text-[11px] h-7 px-3 brand-glow"
+            variant="primary" className="h-7 px-3.5 text-[13px] font-medium"
             onClick={saveSection}
             disabled={saveCredentials.isPending}
           >
@@ -233,7 +233,7 @@ export default function Settings() {
               <button
                 key={s.id}
                 onClick={() => setActiveSection(s.id)}
-                className={`w-full text-left text-[12px] font-[510] px-3 py-2 rounded-lg transition-all ${
+                className={`w-full text-left text-[12px] font-medium px-3 py-2 rounded-lg transition-all ${
                   activeSection === s.id
                     ? "bg-aria-accent/[0.12] text-aria-accent"
                     : "text-aria-text3 hover:text-aria-text2 hover:bg-[var(--aria-surface)]"
@@ -248,7 +248,7 @@ export default function Settings() {
 
             {/* ── Connections ─────────────────────────────────────────────── */}
             {activeSection === "connections" && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-3">
+              <motion.div className="space-y-3">
                 <GlassCard className="p-3 space-y-2">
                   <Label className="text-[11px] text-aria-text4">ARIA API Key</Label>
                   <div className="flex gap-2">
@@ -274,7 +274,7 @@ export default function Settings() {
                 </p>
                 {SOURCE_CATEGORIES.map((cat) => (
                   <div key={cat.id}>
-                    <p className="text-[10px] font-[510] text-aria-text4 uppercase tracking-widest mb-2">{cat.label}</p>
+                    <p className="text-[11px] font-medium text-aria-text3 mb-2">{cat.label}</p>
                     <div className="space-y-2">
                       {sourcesByCategory(cat.id as SourceCategory).map((src) => {
                         const vs = verifyStatus[src.id] ?? "idle";
@@ -285,7 +285,7 @@ export default function Settings() {
                             <GlassCard className="overflow-hidden">
                               <CollapsibleTrigger className="w-full flex items-center gap-3 p-3 hover:bg-[var(--aria-surface-2)]/30">
                                 <span>{src.icon}</span>
-                                <span className="text-[13px] font-[510] text-aria-text2 flex-1 text-left">{src.name}</span>
+                                <span className="text-[13px] font-medium text-aria-text2 flex-1 text-left">{src.name}</span>
                                 <VerifyIcon status={vs} />
                                 {src.credentials.length === 0 ? (
                                   <span className="text-[9px] text-aria-success bg-aria-success/10 border border-aria-success/20 px-1.5 py-px rounded-full">No auth</span>
@@ -349,7 +349,7 @@ export default function Settings() {
 
             {/* ── LLM Cloud ───────────────────────────────────────────────── */}
             {activeSection === "llm-cloud" && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-3">
+              <motion.div className="space-y-3">
                 <ActiveLLMBadge llmStatus={llmStatus} />
                 <p className="text-[11px] text-aria-text4 mb-4">
                   Configure a cloud LLM for document cleaning and synthesis. Click <strong>Set Active</strong> to make it the default.
@@ -366,7 +366,7 @@ export default function Settings() {
                       <GlassCard className={`overflow-hidden ${isActive ? "ring-1 ring-aria-accent/40" : ""}`}>
                         <CollapsibleTrigger className="w-full flex items-center gap-3 p-4 hover:bg-[var(--aria-surface-2)]/30">
                           <span className="text-xl">{provider.icon}</span>
-                          <span className="text-[13px] font-[590] text-aria-text1 flex-1 text-left">{provider.name}</span>
+                          <span className="text-[13px] font-semibold text-aria-text1 flex-1 text-left">{provider.name}</span>
                           {isActive && (
                             <span className="text-[9px] text-aria-accent border border-aria-accent/30 bg-aria-accent/10 px-1.5 py-px rounded-full">Active</span>
                           )}
@@ -408,7 +408,7 @@ export default function Settings() {
                                     <button
                                       key={m}
                                       onClick={() => modelField && setCredValue(modelField.key, m)}
-                                      className={`text-[10px] font-[510] px-2 py-0.5 rounded-full border transition-all ${
+                                      className={`text-[10px] font-medium px-2 py-0.5 rounded-full border transition-all ${
                                         selected
                                           ? "text-aria-accent border-aria-accent/40 bg-aria-accent/10"
                                           : "text-aria-text3 border-[var(--aria-border)] bg-[var(--aria-surface)] hover:border-aria-accent/30"
@@ -462,12 +462,12 @@ export default function Settings() {
 
             {/* ── LLM Local (Ollama) ─────────────────────────────────────── */}
             {activeSection === "llm-local" && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
+              <motion.div className="space-y-4">
                 <ActiveLLMBadge llmStatus={llmStatus} />
                 <GlassCard className="p-4 space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-[13px] font-[590] text-aria-text1">Local LLM (Ollama)</p>
+                      <p className="text-[13px] font-semibold text-aria-text1">Local LLM (Ollama)</p>
                       <p className="text-[11px] text-aria-text4 mt-0.5">Use a locally running model — no API key needed</p>
                     </div>
                     <Switch
@@ -500,7 +500,7 @@ export default function Settings() {
                               <button
                                 key={m}
                                 onClick={() => setOllamaModel(m)}
-                                className={`text-[10px] font-[510] px-2 py-0.5 rounded-full border transition-all ${
+                                className={`text-[10px] font-medium px-2 py-0.5 rounded-full border transition-all ${
                                   ollamaModel === m
                                     ? "text-aria-accent border-aria-accent/40 bg-aria-accent/10"
                                     : "text-aria-text3 border-[var(--aria-border)] bg-[var(--aria-surface)] hover:border-aria-accent/30"
@@ -564,11 +564,11 @@ export default function Settings() {
 
             {/* ── LLM Ensemble ────────────────────────────────────────────── */}
             {activeSection === "llm-ensemble" && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
+              <motion.div className="space-y-4">
                 <GlassCard className="p-4 space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-[13px] font-[590] text-aria-text1">LLM Ensemble</p>
+                      <p className="text-[13px] font-semibold text-aria-text1">LLM Ensemble</p>
                       <p className="text-[11px] text-aria-text4 mt-0.5">Run multiple LLMs in parallel for richer synthesis</p>
                     </div>
                     <Switch
@@ -618,9 +618,9 @@ export default function Settings() {
 
             {/* ── Default Mission ─────────────────────────────────────────── */}
             {activeSection === "mission" && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+              <motion.div>
                 <GlassCard className="p-4 space-y-3">
-                  <p className="text-[13px] font-[590] text-aria-text1">Default Mission YAML</p>
+                  <p className="text-[13px] font-semibold text-aria-text1">Default Mission YAML</p>
                   <p className="text-[11px] text-aria-text4">Used when launching a run without a custom mission.</p>
                   <Textarea
                     value={defaultMission}
@@ -634,9 +634,9 @@ export default function Settings() {
 
             {/* ── Output ──────────────────────────────────────────────────── */}
             {activeSection === "output" && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+              <motion.div>
                 <GlassCard className="p-4 space-y-4">
-                  <p className="text-[13px] font-[590] text-aria-text1">Default Export Formats</p>
+                  <p className="text-[13px] font-semibold text-aria-text1">Default Export Formats</p>
                   <div className="space-y-2">
                     {(["json", "csv", "markdown", "pdf"] as const).map((fmt) => (
                       <label key={fmt} className="flex items-center gap-2 cursor-pointer">
@@ -655,10 +655,10 @@ export default function Settings() {
 
             {/* ── Appearance ─────────────────────────────────────────────── */}
             {activeSection === "appearance" && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
+              <motion.div className="space-y-4">
                 <GlassCard className="p-4 space-y-4">
                   <div>
-                    <p className="text-[13px] font-[590] text-aria-text1 mb-0.5">Theme</p>
+                    <p className="text-[13px] font-semibold text-aria-text1 mb-0.5">Theme</p>
                     <p className="text-[11px] text-aria-text4">Choose between dark and light interface</p>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
@@ -670,19 +670,19 @@ export default function Settings() {
                     >
                       <div className="bg-[#08090a] p-3 h-24 flex flex-col gap-1.5">
                         <div className="flex gap-1">
-                          <div className="w-1.5 h-1.5 rounded-full bg-[#7170ff]/60" />
+                          <div className="w-1.5 h-1.5 rounded-full bg-[#0a84ff]/70" />
                           <div className="h-1.5 w-8 rounded bg-white/10" />
                         </div>
                         <div className="flex gap-1.5">
-                          {["#7170ff","#10b981","#f59e0b"].map((c) => (
+                          {["#0a84ff","#30d158","#ff9f0a"].map((c) => (
                             <div key={c} className="flex-1 h-8 rounded" style={{ background:`${c}18`, border:`1px solid ${c}30` }} />
                           ))}
                         </div>
                         <div className="h-4 rounded bg-white/[0.04] border border-[rgba(255,255,255,0.08)]" />
                       </div>
                       <div className="px-3 py-2 bg-[#0f1011] border-t border-[rgba(255,255,255,0.06)]">
-                        <span className="text-[11px] font-[510] text-white/80">Dark</span>
-                        {theme === "dark" && <span className="float-right text-[9px] text-[#7170ff] font-[510]">Active</span>}
+                        <span className="text-[11px] font-medium text-white/80">Dark</span>
+                        {theme === "dark" && <span className="float-right text-[9px] text-[#0a84ff] font-medium">Active</span>}
                       </div>
                     </button>
                     <button
@@ -693,19 +693,19 @@ export default function Settings() {
                     >
                       <div className="bg-[#f5f6f8] p-3 h-24 flex flex-col gap-1.5">
                         <div className="flex gap-1">
-                          <div className="w-1.5 h-1.5 rounded-full bg-[#4f4ef0]/60" />
+                          <div className="w-1.5 h-1.5 rounded-full bg-[#0071e3]/70" />
                           <div className="h-1.5 w-8 rounded bg-black/10" />
                         </div>
                         <div className="flex gap-1.5">
-                          {["#4f4ef0","#059669","#d97706"].map((c) => (
+                          {["#0071e3","#248a3d","#c93400"].map((c) => (
                             <div key={c} className="flex-1 h-8 rounded" style={{ background:`${c}14`, border:`1px solid ${c}28` }} />
                           ))}
                         </div>
                         <div className="h-4 rounded bg-black/[0.04] border border-black/[0.08]" />
                       </div>
                       <div className="px-3 py-2 bg-[#eef0f4] border-t border-black/[0.06]">
-                        <span className="text-[11px] font-[510] text-black/70">Light</span>
-                        {theme === "light" && <span className="float-right text-[9px] text-[#4f4ef0] font-[510]">Active</span>}
+                        <span className="text-[11px] font-medium text-black/70">Light</span>
+                        {theme === "light" && <span className="float-right text-[9px] text-[#0071e3] font-medium">Active</span>}
                       </div>
                     </button>
                   </div>
@@ -713,9 +713,9 @@ export default function Settings() {
 
                 <GlassCard className="p-4 flex items-center justify-between">
                   <div>
-                    <p className="text-[13px] font-[590] text-aria-text1 mb-0.5">Quick toggle</p>
+                    <p className="text-[13px] font-semibold text-aria-text1 mb-0.5">Quick toggle</p>
                     <p className="text-[11px] text-aria-text4">
-                      Currently: <span className="text-aria-text2 font-[510] capitalize">{theme}</span> mode
+                      Currently: <span className="text-aria-text2 font-medium capitalize">{theme}</span> mode
                     </p>
                   </div>
                   <Switch

@@ -11,10 +11,10 @@ import { useEnabledSources } from "@/hooks/useEnabledSources";
 import type { SourceCategory } from "@/lib/sources";
 
 const stagger = { animate: { transition: { staggerChildren: 0.04 } } };
-const item = { initial: { opacity: 0, y: 6 }, animate: { opacity: 1, y: 0, transition: { duration: 0.15 } } };
+const item = {}; // entrance handled at page level
 
 const CATEGORY_META: Record<string, { color: string; desc: string }> = {
-  web:       { color: "#7170ff", desc: "General web, RSS, GitHub, government sites" },
+  web:       { color: "var(--aria-accent)", desc: "General web, RSS, GitHub, government sites" },
   academic:  { color: "#10b981", desc: "Research papers, preprints, reference libraries" },
   social:    { color: "#f59e0b", desc: "Twitter/X, Slack channels" },
   media:     { color: "#06b6d4", desc: "YouTube, Vimeo, podcast transcripts" },
@@ -53,7 +53,7 @@ export default function Sources() {
                 <TabsTrigger
                   key={cat.id}
                   value={cat.id}
-                  className="text-[12px] font-[510] text-aria-text3 rounded-md px-3 py-1.5 transition-all data-[state=active]:bg-aria-accent data-[state=active]:text-white data-[state=active]:shadow-sm"
+                  className="text-[12px] font-medium text-aria-text3 rounded-md px-3 py-1.5 transition-all data-[state=active]:bg-aria-accent data-[state=active]:text-white data-[state=active]:shadow-sm"
                 >
                   {cat.label}
                 </TabsTrigger>
@@ -71,7 +71,7 @@ export default function Sources() {
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-2 h-2 rounded-full" style={{ background: meta.color }} />
                     <span className="text-[11px] text-aria-text4">{meta.desc}</span>
-                    <span className="ml-auto text-[11px] font-[510]" style={{ color: meta.color }}>
+                    <span className="ml-auto text-[11px] font-medium" style={{ color: meta.color }}>
                       {enabledCount}/{sources.length} active
                     </span>
                   </div>
@@ -105,16 +105,16 @@ export default function Sources() {
 
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                <span className="text-[13px] font-[590] text-aria-text1">{src.name}</span>
+                                <span className="text-[13px] font-semibold text-aria-text1">{src.name}</span>
 
                                 {configured ? (
-                                  <span className="text-[9px] font-[510] text-aria-success bg-aria-success/10 border border-aria-success/20 px-1.5 py-px rounded-full">
+                                  <span className="text-[9px] font-medium text-aria-success bg-aria-success/10 border border-aria-success/20 px-1.5 py-px rounded-full">
                                     Configured ✓
                                   </span>
                                 ) : (
                                   <button
                                     onClick={() => navigate("/settings")}
-                                    className="text-[9px] font-[510] text-aria-accent bg-aria-accent/[0.08] border border-aria-accent/20 px-1.5 py-px rounded-full flex items-center gap-0.5 hover:bg-aria-accent/[0.15] transition-colors"
+                                    className="text-[9px] font-medium text-aria-accent bg-aria-accent/[0.08] border border-aria-accent/20 px-1.5 py-px rounded-full flex items-center gap-0.5 hover:bg-aria-accent/[0.15] transition-colors"
                                   >
                                     Configure <ExternalLink size={8} />
                                   </button>

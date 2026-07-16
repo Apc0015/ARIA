@@ -45,11 +45,11 @@ export function RunRow({ run, className }: RunRowProps) {
 
       <StatusDot status={run.status} />
 
-      <span className="flex-1 text-sm font-[510] text-aria-text2 truncate">
+      <span className="flex-1 text-sm font-medium text-aria-text2 truncate">
         {run.topic ?? run.message ?? run.run_id}
       </span>
 
-      <span className="text-sm font-[590] text-aria-text1 w-10 text-right tabular-nums">
+      <span className="text-sm font-semibold text-aria-text1 w-10 text-right tabular-nums">
         {run.total_documents != null ? run.total_documents.toLocaleString() : "—"}
       </span>
 

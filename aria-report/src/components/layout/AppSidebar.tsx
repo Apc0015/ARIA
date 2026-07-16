@@ -29,28 +29,21 @@ function SidebarItem({ to, icon: Icon, label, exact }: typeof NAV[0]) {
           title={label}
           className={({ isActive }) =>
             cn(
-              "relative w-9 h-9 rounded-[6px] flex items-center justify-center",
-              "transition-all duration-100",
+              "relative w-9 h-9 rounded-[8px] flex items-center justify-center",
+              "transition-all duration-150 active:scale-95",
               isActive
                 ? "sidebar-active text-aria-accent"
-                : "text-aria-text4 hover:text-aria-text2 hover:bg-[rgba(255,255,255,0.03)] dark:hover:bg-[rgba(255,255,255,0.03)]"
+                : "text-aria-text3 hover:text-aria-text1 hover:bg-black/5 dark:hover:bg-white/10"
             )
           }
         >
-          {({ isActive }) => (
-            <>
-              {isActive && (
-                <span className="absolute -left-px top-[24%] bottom-[24%] w-[2px] rounded-r-full bg-aria-accent opacity-90" />
-              )}
-              <Icon size={15} strokeWidth={isActive ? 2 : 1.75} />
-            </>
-          )}
+          {({ isActive }) => <Icon size={16} strokeWidth={isActive ? 2 : 1.6} />}
         </NavLink>
       </TooltipTrigger>
       <TooltipContent
         side="right"
         sideOffset={6}
-        className="bg-aria-surface border border-[var(--aria-border)] text-aria-text2 text-[12px] font-[510] px-2.5 py-1 shadow-[rgba(0,0,0,0.2)_0px_4px_8px]"
+        className="bg-aria-surface border border-[var(--aria-border)] text-aria-text2 text-[12px] font-medium px-2.5 py-1 shadow-[rgba(0,0,0,0.2)_0px_4px_8px]"
       >
         {label}
       </TooltipContent>
@@ -66,9 +59,9 @@ export function AppSidebar({ theme, onToggleTheme }: AppSidebarProps) {
     <>
       {/* Desktop sidebar */}
       <TooltipProvider>
-        <aside className="hidden md:flex w-14 flex-shrink-0 bg-aria-panel border-r border-[var(--aria-border-subtle)] flex-col items-center py-3 gap-0.5">
-          {/* Logomark */}
-          <div className="w-7 h-7 rounded-[6px] bg-gradient-to-br from-aria-brand to-aria-accent flex items-center justify-center text-white text-[12px] font-[620] mb-4 select-none brand-glow">
+        <aside className="hidden md:flex w-14 flex-shrink-0 material-chrome border-r border-[var(--aria-border-subtle)] flex-col items-center py-3 gap-0.5">
+          {/* Logomark — solid, no gradient, no glow */}
+          <div className="w-7 h-7 rounded-[8px] bg-aria-text1 text-aria-bg flex items-center justify-center text-[13px] font-semibold mb-4 select-none">
             A
           </div>
 
@@ -90,7 +83,7 @@ export function AppSidebar({ theme, onToggleTheme }: AppSidebarProps) {
                 <ThemeIcon size={14} strokeWidth={1.75} />
               </button>
             </TooltipTrigger>
-            <TooltipContent side="right" sideOffset={6} className="bg-aria-surface border border-[var(--aria-border)] text-aria-text2 text-[12px] font-[510] px-2.5 py-1">
+            <TooltipContent side="right" sideOffset={6} className="bg-aria-surface border border-[var(--aria-border)] text-aria-text2 text-[12px] font-medium px-2.5 py-1">
               {themeLabel}
             </TooltipContent>
           </Tooltip>
@@ -100,7 +93,7 @@ export function AppSidebar({ theme, onToggleTheme }: AppSidebarProps) {
       </TooltipProvider>
 
       {/* Mobile bottom tab bar */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 h-14 bg-aria-panel border-t border-[var(--aria-border-subtle)] flex items-center justify-around px-1">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 h-14 material-chrome border-t border-[var(--aria-border-subtle)] flex items-center justify-around px-1">
         {ALL_NAV.map(({ to, icon: Icon, label, exact }) => (
           <NavLink
             key={to}
@@ -115,7 +108,7 @@ export function AppSidebar({ theme, onToggleTheme }: AppSidebarProps) {
             }
           >
             <Icon size={17} strokeWidth={1.75} />
-            <span className="text-[9px] font-[510]">{label}</span>
+            <span className="text-[9px] font-medium">{label}</span>
           </NavLink>
         ))}
         <button
@@ -124,7 +117,7 @@ export function AppSidebar({ theme, onToggleTheme }: AppSidebarProps) {
           className="flex flex-col items-center gap-0.5 px-3 py-1 rounded-lg text-aria-text4 hover:text-aria-text2 transition-colors"
         >
           <ThemeIcon size={17} strokeWidth={1.75} />
-          <span className="text-[9px] font-[510]">Theme</span>
+          <span className="text-[9px] font-medium">Theme</span>
         </button>
       </nav>
     </>

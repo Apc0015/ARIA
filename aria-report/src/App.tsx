@@ -1,15 +1,16 @@
 import { useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, MotionConfig, motion } from "framer-motion";
 import { Toaster } from "sonner";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { useTheme } from "@/hooks/useTheme";
 import { ensureApiKey } from "@/lib/api";
 
+// Restrained, native-feeling transition: a short fade with a 6px rise.
 const pageVariants = {
-  initial: { opacity: 0, x: 16 },
-  animate: { opacity: 1, x: 0, transition: { duration: 0.18, ease: "easeOut" } },
-  exit: { opacity: 0, x: -8, transition: { duration: 0.12 } },
+  initial: { opacity: 0, y: 6 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.22, ease: [0.32, 0.72, 0, 1] } },
+  exit: { opacity: 0, transition: { duration: 0.1 } },
 };
 
 export default function App() {
@@ -24,10 +25,12 @@ export default function App() {
   }, []);
 
   return (
+    <MotionConfig reducedMotion="user">
     <div className="flex h-screen overflow-hidden bg-aria-bg">
       <AppSidebar theme={theme} onToggleTheme={toggle} />
       <main className="flex-1 flex flex-col overflow-hidden">
-        <AnimatePresence mode="wait">
+        {/* initial={false}: the app opens settled; only route changes animate */}
+        <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={location.pathname}
             variants={pageVariants}
@@ -51,5 +54,6 @@ export default function App() {
         }}
       />
     </div>
+    </MotionConfig>
   );
 }
