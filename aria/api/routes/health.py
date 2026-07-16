@@ -6,14 +6,9 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter
 
-router = APIRouter()
+from aria.engine.ensemble.providers import STATIC_MODEL_CATALOG as PROVIDERS
 
-PROVIDERS = {
-    "openrouter": ["openai/gpt-4.5-turbo", "openai/gpt-4o-mini"],
-    "openai": ["gpt-4o", "gpt-4o-mini"],
-    "anthropic": ["claude-3-5-sonnet-latest", "claude-3-5-haiku-latest"],
-    "ollama": ["llama3.1:8b", "mistral:latest"],
-}
+router = APIRouter()
 
 CONTENT_TYPES = [
     "academic_paper", "news_article", "forum_post", "social_media",

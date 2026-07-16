@@ -100,12 +100,7 @@ else:
 
     _demo_runs: dict = {}
 
-    DEMO_PROVIDERS = {
-        "openrouter": ["openai/gpt-4.5-turbo", "openai/gpt-4o-mini"],
-        "openai": ["gpt-4o", "gpt-4o-mini"],
-        "anthropic": ["claude-3-5-sonnet-latest", "claude-3-5-haiku-latest"],
-        "ollama": ["llama3.1:8b", "mistral:latest"],
-    }
+    from aria.engine.ensemble.providers import STATIC_MODEL_CATALOG as DEMO_PROVIDERS
 
     FREE_SOURCES = [
         "web_search", "pdf", "arxiv", "pubmed", "semantic_scholar",

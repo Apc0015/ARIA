@@ -151,24 +151,11 @@ async def llm_models(
             pass
         return {"provider": "ollama", "models": [], "connected": False}
 
-    # Cloud providers — return static list from llm-providers.ts equivalents
-    static: dict[str, list[str]] = {
-        "anthropic": [
-            "claude-opus-4-7",
-            "claude-sonnet-4-6",
-            "claude-haiku-4-5-20251001",
-        ],
-        "openai": ["gpt-4o", "gpt-4o-mini", "o3-mini"],
-        "openrouter": [
-            "openai/gpt-4o",
-            "anthropic/claude-sonnet-4-6",
-            "mistralai/mixtral-8x7b",
-        ],
-        "gemini": ["gemini-2.0-flash", "gemini-2.5-pro"],
-        "cohere": ["command-r-plus", "command-r"],
-    }
+    # Cloud providers — shared static catalog (see providers.py)
+    from aria.engine.ensemble.providers import STATIC_MODEL_CATALOG
+
     return {
         "provider": provider,
-        "models": static.get(provider, []),
+        "models": STATIC_MODEL_CATALOG.get(provider, []),
         "connected": False,
     }

@@ -10,6 +10,28 @@ class LLMUnavailableError(ValueError):
     """Raised when a run needs an LLM but none is ready to use."""
 
 
+# Single source of truth for the suggested-model lists shown in the UI and
+# returned by /api/llm/* and /api/info. Keep aligned with
+# aria-report/src/lib/llm-providers.ts. These are suggestions only — any
+# model id the provider accepts works.
+STATIC_MODEL_CATALOG: dict[str, list[str]] = {
+    "anthropic": [
+        "claude-sonnet-4-6",
+        "claude-opus-4-7",
+        "claude-haiku-4-5-20251001",
+    ],
+    "openai": ["gpt-4o", "gpt-4o-mini", "o3-mini"],
+    "openrouter": [
+        "openai/gpt-4o",
+        "anthropic/claude-sonnet-4-6",
+        "mistralai/mixtral-8x7b",
+    ],
+    "ollama": ["llama3.1:8b", "mistral:latest"],
+    "gemini": ["gemini-2.0-flash", "gemini-2.5-pro"],
+    "cohere": ["command-r-plus", "command-r"],
+}
+
+
 def build_provider_catalog(config: Any) -> list[dict]:
     """Return a list of available LLM providers with API keys set.
 
