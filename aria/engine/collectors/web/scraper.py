@@ -110,6 +110,11 @@ class WebScraperCollector(BaseCollector):
         Returns:
             Document dict, or None on failure.
         """
+        from aria.utils.robots import allowed_async
+
+        if not await allowed_async(url):
+            return None
+
         async with self._semaphore:
             domain = urlparse(url).netloc
             camofox = _camofox()

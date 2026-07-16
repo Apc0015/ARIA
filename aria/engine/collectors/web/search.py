@@ -173,6 +173,11 @@ async def _scrape(stub: dict, sem: asyncio.Semaphore) -> dict:
     url      = stub["url"]
     snip_len = len(stub.get("text", ""))
 
+    from aria.utils.robots import allowed_async
+
+    if not await allowed_async(url):
+        return stub  # keep the search snippet; skip full-page fetch
+
     async with sem:
         # ── 1. Jina ───────────────────────────────────────────────────────────
         try:

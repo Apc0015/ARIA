@@ -27,14 +27,12 @@ class PaywallResolver:
     """
 
     UNPAYWALL_BASE = "https://api.unpaywall.org/v2"
-    _UNPAYWALL_EMAIL_DEFAULT = "research@aria-platform.org"
 
     def __init__(self, timeout: int = 15) -> None:
         self._timeout = timeout
-        # Read at instantiation time so env var changes take effect without reimport
-        self._unpaywall_email = os.getenv(
-            "UNPAYWALL_EMAIL", self._UNPAYWALL_EMAIL_DEFAULT
-        )
+        # Unpaywall's ToS require a REAL contact email. No fake default:
+        # when unset, the Unpaywall route is skipped (other OA routes still run).
+        self._unpaywall_email = os.getenv("UNPAYWALL_EMAIL", "").strip()
 
     @property
     def UNPAYWALL_EMAIL(self) -> str:  # noqa: N802 — preserve existing attribute name
@@ -66,6 +64,11 @@ class PaywallResolver:
         return None
 
     async def _try_unpaywall(self, doi: str) -> Optional[str]:
+        if not self._unpaywall_email:
+            logger.debug(
+                "UNPAYWALL_EMAIL not set — skipping Unpaywall (ToS require a real email)"
+            )
+            return None
         try:
             encoded_doi = quote(doi, safe="")
             endpoint = f"{self.UNPAYWALL_BASE}/{encoded_doi}?email={self.UNPAYWALL_EMAIL}"
