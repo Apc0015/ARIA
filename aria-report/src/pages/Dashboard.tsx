@@ -1,5 +1,4 @@
 import { useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
 import { Play, ArrowRight, BarChart2, FileStack, Activity, Zap, Search, ChevronRight } from "lucide-react";
 import { PageTopbar } from "@/components/layout/PageTopbar";
 import { GlassCard } from "@/components/glass/GlassCard";
@@ -9,27 +8,53 @@ import { Button } from "@/components/ui/button";
 import { useRuns } from "@/hooks/useRuns";
 import { SOURCES } from "@/lib/sources";
 
-// Entrance is handled once at the page level (App.tsx); items render settled.
-const stagger = {};
-const item = {};
-
-const STAT_COLORS = [
-  { icon: BarChart2, accent: "var(--aria-accent)", label: "Total Runs" },
-  { icon: FileStack, accent: "#10b981", label: "Docs Collected" },
-  { icon: Activity,  accent: "#f59e0b", label: "Active Now" },
-  { icon: Zap,       accent: "#06b6d4", label: "Sources" },
-];
-
 export default function Dashboard() {
   const navigate = useNavigate();
   const { data, isLoading } = useRuns();
 
   const runs = data?.runs ?? [];
-  const totalDocs  = runs.reduce((s, r) => s + (r.total_documents ?? 0), 0);
-  const activeCount = runs.filter((r) => r.status === "running" || r.status === "pending").length;
-
+  const totalRuns = data?.total ?? runs.length;
+  const totalDocs = runs.reduce((s, r) => s + (r.total_documents ?? 0), 0);
+  const completedCount = runs.filter((r) => r.status === "completed").length;
+  const activeCount = runs.filter(
+    (r) => r.status === "running" || r.status === "pending" || r.status === "queued"
+  ).length;
   const sourceCount = SOURCES.length;
-  const statValues = [data?.total ?? 0, totalDocs, activeCount, sourceCount];
+  const avgDocs = completedCount ? Math.round(totalDocs / completedCount) : 0;
+
+  // Each tile carries context — a number alone doesn't tell a story.
+  const STATS = [
+    {
+      icon: BarChart2,
+      accent: "var(--aria-accent)",
+      label: "Total runs",
+      value: totalRuns,
+      context: completedCount
+        ? `${completedCount} completed`
+        : "No completed runs yet",
+    },
+    {
+      icon: FileStack,
+      accent: "#30d158",
+      label: "Documents",
+      value: totalDocs,
+      context: completedCount ? `~${avgDocs.toLocaleString()} per run` : "Across all runs",
+    },
+    {
+      icon: Activity,
+      accent: "#ff9f0a",
+      label: "Active now",
+      value: activeCount,
+      context: activeCount ? "In progress" : "Nothing running",
+    },
+    {
+      icon: Zap,
+      accent: "#0a84ff",
+      label: "Sources",
+      value: sourceCount,
+      context: "Ready to collect",
+    },
+  ];
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -47,49 +72,39 @@ export default function Dashboard() {
         }
       />
 
-      {/* Atmospheric layer */}
-      <div className="flex-1 overflow-y-auto relative pb-16 md:pb-5">
-        <div className="absolute inset-0 aria-atmo-glow aria-grid pointer-events-none" />
-
-        <div className="relative p-5 space-y-5">
+      <div className="flex-1 overflow-y-auto pb-16 md:pb-5">
+        <div className="p-5 space-y-5 max-w-5xl">
           {/* Stat strip */}
-          <motion.div
-            variants={stagger}
-            initial="initial"
-            animate="animate"
-            className="grid grid-cols-2 md:grid-cols-4 gap-3"
-          >
-            {STAT_COLORS.map((s, i) => {
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {STATS.map((s) => {
               const Icon = s.icon;
               return (
-                <motion.div key={s.label} variants={item}>
-                  <GlassCard
-                    className="p-4 stat-accent-bar overflow-hidden"
-                    style={{ "--stat-accent": s.accent } as React.CSSProperties}
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <div
-                        className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                        style={{ background: `${s.accent}18` }}
-                      >
-                        <Icon size={15} style={{ color: s.accent }} />
-                      </div>
+                <GlassCard key={s.label} className="p-4 flex flex-col">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div
+                      className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{ background: `${s.accent}1f` }}
+                    >
+                      <Icon size={14} style={{ color: s.accent }} />
                     </div>
-                    <NumberTicker
-                      value={statValues[i]}
-                      className="block text-[28px] font-semibold text-aria-text1 tracking-h1 tabular-nums leading-none"
-                    />
-                    <span className="block text-[11px] font-medium text-aria-text3 mt-1.5">
+                    <span className="text-[12px] font-medium text-aria-text3 truncate">
                       {s.label}
                     </span>
-                  </GlassCard>
-                </motion.div>
+                  </div>
+                  <NumberTicker
+                    value={s.value}
+                    className="block text-[30px] font-semibold text-aria-text1 tabular-nums leading-none"
+                  />
+                  <span className="block text-[11px] text-aria-text4 mt-2">
+                    {s.context}
+                  </span>
+                </GlassCard>
               );
             })}
-          </motion.div>
+          </div>
 
           {/* Quick launch — command-palette style */}
-          <motion.div variants={item} initial="initial" animate="animate">
+          <div>
             <GlassCard
               className="p-4 flex items-center gap-3 cursor-pointer group"
               elevated
@@ -119,7 +134,7 @@ export default function Dashboard() {
                 <Play size={11} className="mr-1.5" /> Launch
               </Button>
             </GlassCard>
-          </motion.div>
+          </div>
 
           {/* Recent runs */}
           <div>
@@ -169,16 +184,9 @@ export default function Dashboard() {
                 </div>
               </GlassCard>
             ) : (
-              <motion.div
-                variants={stagger}
-                initial="initial"
-                animate="animate"
-                className="space-y-2"
-              >
+              <div className="space-y-2">
                 {runs.slice(0, 8).map((run) => (
-                  <motion.div key={run.run_id} variants={item}>
-                    <RunRow run={run} />
-                  </motion.div>
+                  <RunRow key={run.run_id} run={run} />
                 ))}
                 {runs.length > 8 && (
                   <button
@@ -188,7 +196,7 @@ export default function Dashboard() {
                     {runs.length - 8} more runs <ChevronRight size={11} />
                   </button>
                 )}
-              </motion.div>
+              </div>
             )}
           </div>
         </div>

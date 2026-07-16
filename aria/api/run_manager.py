@@ -228,17 +228,20 @@ class RunManager:
         status = "failed" if failed_marker.exists() else "completed"
         created_at = datetime.fromtimestamp(run_dir.stat().st_mtime, timezone.utc).isoformat()
         report_path = exports.get("markdown") or exports.get("html") or ""
+        topic = self._recover_topic(run_dir, clean_docs)
         return RunState(
             run_id=run_dir.name,
             status=status,
             stage=status,
-            message="Hydrated from persisted run files",
+            message=topic or "Untitled run",
             created_at=created_at,
             updated_at=created_at,
             stats={
                 "collected": len(raw_docs),
                 "cleaned": len(clean_docs),
-                "topic": run_dir.name,
+                # Real research topic recovered from the run's own outputs —
+                # never the run-id hash (that made the UI show hashes as titles).
+                "topic": topic,
             },
             docs_collected=len(raw_docs),
             docs_cleaned=len(clean_docs),
@@ -249,6 +252,42 @@ class RunManager:
             error=failed_marker.read_text(encoding="utf-8")[:400] if failed_marker.exists() else None,
             output_dir=str(run_dir),
         )
+
+    @staticmethod
+    def _recover_topic(run_dir: Path, clean_docs: list[dict[str, Any]]) -> str:
+        """Recover a run's human topic from its own persisted outputs.
+
+        Tried in order: the research-digest header, then the mission the
+        engine saved, then the first cleaned document's topic hint. Returns
+        "" when nothing human is available — callers show "Untitled run".
+        """
+        digest = run_dir / "exports" / "research_digest.md"
+        if digest.exists():
+            try:
+                for line in digest.read_text(encoding="utf-8").splitlines():
+                    if line.startswith("# Research Digest:"):
+                        return line.split(":", 1)[1].strip()
+                    if line.startswith("# "):
+                        return line[2:].strip()
+            except OSError:
+                pass
+        for name in ("mission.yaml", "mission.json"):
+            path = run_dir / name
+            if path.exists():
+                try:
+                    import yaml
+
+                    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+                    topic = (data.get("collection") or {}).get("topic")
+                    if topic:
+                        return str(topic)
+                except Exception:
+                    pass
+        for doc in clean_docs[:1]:
+            hint = doc.get("topic") or doc.get("research_topic")
+            if hint:
+                return str(hint)
+        return ""
 
     @staticmethod
     def _load_docs(*paths: Path, limit: int = 100) -> list[dict[str, Any]]:
