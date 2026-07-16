@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-__version__ = "5.0.0"
+__version__ = "5.1.0"
 __author__ = "Ayush Chhoker"
-__author_email__ = "ayush.chhoker@example.com"
+__author_email__ = "ayushchhoker15@gmail.com"
 __contributors__ = ["ARIA Contributors"]
 
 # Minimal imports to avoid circular deps

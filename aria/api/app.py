@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI
+
+from aria import __version__
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -43,7 +45,7 @@ except ImportError:
 
 app = FastAPI(
     title="ARIA API",
-    version="5.0.0",
+    version=__version__,
     description="Agentic Research Intelligence Architecture",
 )
 
@@ -120,7 +122,7 @@ else:
     async def _demo_health():
         return {
             "status": "ok",
-            "version": "5.0.0",
+            "version": __version__,
             "mode": "demo",
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
@@ -130,7 +132,7 @@ else:
         return {
             "name": "ARIA",
             "title": "Agentic Research Intelligence Architecture",
-            "version": "5.0.0",
+            "version": __version__,
             "mode": "demo",
             "description": "Fully automated research collection and intelligence platform",
             "agents": {"total": 22, "web": 15, "academic": 3, "media": 3},
@@ -253,7 +255,7 @@ async def root():
         return FileResponse(index)
     return {
         "message": "ARIA API",
-        "version": "5.0.0",
+        "version": __version__,
         "backend": "real" if USE_REAL_BACKEND else "demo",
         "docs": "/docs",
         "ui": "Run React dev server from aria-report or build aria-report/dist",

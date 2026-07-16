@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter
 
+from aria import __version__
+
 from aria.engine.ensemble.providers import STATIC_MODEL_CATALOG as PROVIDERS
 
 router = APIRouter()
@@ -22,7 +24,7 @@ async def health():
     """Health check endpoint."""
     return {
         "status": "ok",
-        "version": "5.0.0",
+        "version": __version__,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -33,7 +35,7 @@ async def info():
     return {
         "name": "ARIA",
         "title": "Agentic Research Intelligence Architecture",
-        "version": "5.0.0",
+        "version": __version__,
         "description": "Fully automated research collection and intelligence platform",
         "agents": {
             "total": 37,

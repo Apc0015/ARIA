@@ -6,7 +6,9 @@ import argparse
 import sys
 
 
-VERSION = "ARIA 5.0.0"
+from aria import __version__
+
+VERSION = f"ARIA {__version__}"
 
 
 def build_parser() -> argparse.ArgumentParser:

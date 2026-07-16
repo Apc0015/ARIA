@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aria-research"
-version = "5.0.0"
+version = "5.1.0"
 description = "Agentic Research Intelligence Architecture"
 authors = [{name = "Ayush Chhoker", email = "ayushchhoker15@gmail.com"}]
 license = {text = "MIT"}
