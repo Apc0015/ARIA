@@ -6,6 +6,10 @@ import os
 from typing import Any, Optional
 
 
+class LLMUnavailableError(ValueError):
+    """Raised when a run needs an LLM but none is ready to use."""
+
+
 def build_provider_catalog(config: Any) -> list[dict]:
     """Return a list of available LLM providers with API keys set.
 
@@ -130,66 +134,84 @@ def describe_cleaning_brain(config: Any) -> dict:
     Returns:
         Dict with provider, model_id, base_url, and notes fields.
     """
-    # Priority order: Anthropic > OpenRouter > OpenAI > Ollama
-    ant_key = os.getenv("ANTHROPIC_API_KEY")
-    if ant_key:
+    provider, model_id, base_url, api_key = resolve_cleaning_llm(config)
+    if not provider:
         return {
-            "provider": "anthropic",
-            "model_id": "claude-3-haiku-20240307",
+            "provider": "none",
+            "model_id": "",
             "base_url": None,
-            "notes": "Anthropic Claude 3 Haiku (direct)",
-            "available": True,
+            "notes": "No LLM connected",
+            "available": False,
         }
-
-    or_key = os.getenv("OPENROUTER_API_KEY")
-    if or_key:
-        return {
-            "provider": "openrouter",
-            "model_id": "openai/gpt-4o-mini",
-            "base_url": "https://openrouter.ai/api/v1",
-            "notes": "OpenRouter / GPT-4o Mini",
-            "available": True,
-        }
-
-    oai_key = os.getenv("OPENAI_API_KEY")
-    if oai_key:
-        return {
-            "provider": "openai",
-            "model_id": "gpt-4o-mini",
-            "base_url": "https://api.openai.com/v1",
-            "notes": "OpenAI GPT-4o Mini (direct)",
-            "available": True,
-        }
-
-    ollama_base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     return {
-        "provider": "ollama",
-        "model_id": "llama3.1:8b",
-        "base_url": ollama_base,
-        "notes": "Local Ollama / Llama 3.1 8B (no LLM key set)",
-        "available": False,  # Flag as potentially unavailable
+        "provider": provider,
+        "model_id": model_id,
+        "base_url": base_url,
+        "notes": f"Configured {provider} model",
+        "available": bool(api_key) or provider == "ollama",
     }
 
 
 def resolve_cleaning_llm(config: Any) -> tuple[str, str, Optional[str], str]:
     """Single source of truth for which LLM to use for cleaning/planning.
 
-    Priority: Anthropic > OpenRouter > OpenAI > Ollama (local fallback).
+    A selected ``LLM_PROVIDER`` takes priority. Otherwise, a configured cloud
+    key is selected in the historical priority order. There is deliberately no
+    pretend local-model fallback: a run must tell the user to connect an LLM.
 
     Returns:
         Tuple of (provider, model_id, base_url, api_key).
     """
-    ant_key = os.getenv("ANTHROPIC_API_KEY", "")
-    if ant_key:
-        return ("anthropic", "claude-3-haiku-20240307", None, ant_key)
+    selected = os.getenv("LLM_PROVIDER", "").strip().lower()
+    defaults = {
+        "anthropic": ("ANTHROPIC_API_KEY", "ANTHROPIC_MODEL", "claude-3-haiku-20240307", None),
+        "openrouter": ("OPENROUTER_API_KEY", "OPENROUTER_MODEL", "openai/gpt-4o-mini", "https://openrouter.ai/api/v1"),
+        "openai": ("OPENAI_API_KEY", "OPENAI_MODEL", "gpt-4o-mini", "https://api.openai.com/v1"),
+    }
+    if selected == "ollama":
+        base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
+        return ("ollama", os.getenv("OLLAMA_MODEL", "llama3.1:8b"), f"{base_url}/v1", "ollama")
+    if selected in defaults:
+        key_name, model_name, default_model, base_url = defaults[selected]
+        return (selected, os.getenv(model_name, default_model), base_url, os.getenv(key_name, ""))
 
-    or_key = os.getenv("OPENROUTER_API_KEY", "")
-    if or_key:
-        return ("openrouter", "openai/gpt-4o-mini", "https://openrouter.ai/api/v1", or_key)
+    for provider in ("anthropic", "openrouter", "openai"):
+        key_name, model_name, default_model, base_url = defaults[provider]
+        api_key = os.getenv(key_name, "")
+        if api_key:
+            return (provider, os.getenv(model_name, default_model), base_url, api_key)
 
-    oai_key = os.getenv("OPENAI_API_KEY", "")
-    if oai_key:
-        return ("openai", "gpt-4o-mini", "https://api.openai.com/v1", oai_key)
+    if os.getenv("OLLAMA_BASE_URL"):
+        base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
+        return ("ollama", os.getenv("OLLAMA_MODEL", "llama3.1:8b"), f"{base_url}/v1", "ollama")
+    return ("", "", None, "")
 
-    ollama_base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-    return ("ollama", "llama3.1:8b", ollama_base + "/v1", "ollama")
+
+async def ensure_llm_ready(config: Any = None) -> tuple[str, str, Optional[str], str]:
+    """Return a ready LLM configuration or a clear user-facing error."""
+    provider, model_id, base_url, api_key = resolve_cleaning_llm(config)
+    if not provider or (provider != "ollama" and not api_key):
+        raise LLMUnavailableError(
+            "No LLM connected. Connect an AI model in Settings, then run again."
+        )
+    if provider != "ollama":
+        return provider, model_id, base_url, api_key
+
+    import httpx
+
+    ollama_url = (base_url or "http://localhost:11434/v1").removesuffix("/v1")
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            response = await client.get(f"{ollama_url}/api/tags")
+        response.raise_for_status()
+        models = {model.get("name", "") for model in response.json().get("models", [])}
+    except Exception as exc:
+        raise LLMUnavailableError(
+            "No LLM connected. Start Ollama or connect an AI model in Settings, then run again."
+        ) from exc
+    if model_id not in models:
+        raise LLMUnavailableError(
+            f"No LLM connected. Ollama model '{model_id}' is not installed. "
+            "Connect an AI model in Settings, then run again."
+        )
+    return provider, model_id, base_url, api_key

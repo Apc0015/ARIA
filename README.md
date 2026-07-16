@@ -1,6 +1,6 @@
 # ARIA — Agentic Research Intelligence Architecture
 
-ARIA is a fully automated research collection and intelligence platform. Give it a topic and a research goal — it deploys 18 parallel web agents with flexible LLM support (OpenRouter, OpenAI, Anthropic cloud + Ollama local), deduplicates and stores every document, then uses a Smart Cleaning Agent to detect content type and extract structured, relevance-scored data. Results are available in 6 download formats.
+ARIA is a fully automated research collection and intelligence platform. Give it a topic and a research goal — it runs selected source collectors in parallel, deduplicates and stores every document, then uses a connected AI model to extract structured, relevance-scored data. Results are available as research exports and an HTML report.
 
 ## Quickstart
 

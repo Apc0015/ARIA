@@ -186,6 +186,13 @@ class InfoCollectorOrchestrator:
         topic = mission.get("collection", {}).get("topic", "research")
         await self._emit("init", f"Starting run {run_id}", run_id=run_id, topic=topic)
 
+        # Full runs promise AI cleaning and intelligence enrichment. Refuse to
+        # start when that promise cannot be kept instead of silently skipping it.
+        if not collect_only and not validate_credentials:
+            from aria.engine.ensemble.providers import ensure_llm_ready
+
+            await ensure_llm_ready(self._config)
+
         runs_dir = Path(self._config.runs_dir)
         run_dir = runs_dir / run_id
         run_dir.mkdir(parents=True, exist_ok=True)

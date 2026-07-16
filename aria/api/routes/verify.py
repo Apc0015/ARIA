@@ -57,8 +57,18 @@ async def llm_status():
         provider, model_id, base_url, api_key = resolve_cleaning_llm(None)
         base_url = base_url or ""
 
+        if not provider:
+            return {
+                "provider": "none",
+                "model": "",
+                "base_url": "",
+                "configured": False,
+                "connected": False,
+                "message": "No LLM connected. Connect an AI model in Settings.",
+            }
+
         if provider == "ollama":
-            url = base_url or "http://localhost:11434"
+            url = (base_url or "http://localhost:11434/v1").removesuffix("/v1")
             try:
                 async with httpx.AsyncClient(timeout=2.5) as client:
                     resp = await client.get(f"{url}/api/tags")

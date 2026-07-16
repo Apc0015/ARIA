@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from aria.output.exporter import Exporter
+from aria.engine.output.exporter import Exporter
 
 
 def test_exporter_writes_json_with_ensemble_fields(tmp_path):

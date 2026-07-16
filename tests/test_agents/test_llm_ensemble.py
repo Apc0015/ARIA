@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from aria.agents.llm_ensemble import LLMEnsembleAgent
+from aria.engine.ensemble.agent import LLMEnsembleAgent
 from aria.engine.memory.shared_memory import SharedMemory
 
 

@@ -38,3 +38,6 @@ data/vectors/*
 !data/vectors/.gitkeep
 data/logs/*
 !data/logs/.gitkeep
+
+# Generated audit reports at repo root
+/*.docx

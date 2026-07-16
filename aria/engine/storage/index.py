@@ -1,14 +1,14 @@
-"""Index helpers for raw document storage."""
+"""Small raw-document index facade."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from aria.storage.raw import RawStore
+from aria.engine.storage.raw_store import RawStore
 
 
 class IndexManager:
-    """Expose raw-store index loading in a named module."""
+    """Expose raw-store index loading through a focused interface."""
 
     def __init__(self, raw_store: RawStore) -> None:
         self.raw_store = raw_store

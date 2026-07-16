@@ -16,7 +16,7 @@ from uuid import uuid4
 from aria.access.credentials import CredentialManager
 from aria.config import load_config
 from aria.mission import load_mission_text
-from aria.orchestrator.master import MasterOrchestrator, RunResult
+from aria.engine.orchestrator import MasterOrchestrator, RunResult
 from aria.types.credentials import CredentialScope, scoped_environ
 from aria.utils.logger import configure_logging
 from aria.engine.ensemble.providers import build_provider_catalog, default_llm_source_models, describe_cleaning_brain
@@ -337,6 +337,16 @@ class RunManager:
                 f"Server at capacity ({active_runs}/{max_runs} runs active). "
                 f"Try again when a run finishes."
             )
+
+        flags = payload.get("flags", {})
+        # Reject a full run before creating background state. The old behavior
+        # accepted it, then quietly produced an incomplete research result.
+        if not bool(flags.get("collect_only", False)) and not bool(flags.get("validate_credentials", False)):
+            from aria.engine.ensemble.providers import ensure_llm_ready
+
+            credential_scope = self._build_credential_scope(payload)
+            async with scoped_environ(credential_scope.to_env()):
+                await ensure_llm_ready(self.base_settings)
 
         run_id = uuid4().hex[:12]
         output_dir = self.base_settings.runs_dir / run_id

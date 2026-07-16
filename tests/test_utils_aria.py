@@ -6,9 +6,9 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from aria.output.formatter import format_document_excerpt
+from aria.engine.output.formatter import format_document_excerpt
 from aria.utils.robots import is_allowed
-from aria.storage.index import IndexManager
+from aria.engine.storage.index import IndexManager
 
 
 # ---------------------------------------------------------------------------

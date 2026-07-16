@@ -1,4 +1,4 @@
-"""Open-web collection agent surface."""
+"""Composite open-web collector retained for programmatic use."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from aria.engine.collectors.web.search import WebSearchCollector
 
 
 class WebAgent:
-    """Composite open-web agent using search plus scrape collectors."""
+    """Collect search results and scrape their linked pages."""
 
     def __init__(self, settings: Any, logger: Any, rate_limiter: Any, shared_memory: Any | None = None) -> None:
         self.search = WebSearchCollector(settings, logger, rate_limiter, shared_memory=shared_memory)
@@ -18,14 +18,11 @@ class WebAgent:
         self.scraper = WebScraperCollector(settings, logger, rate_limiter, self.pdf, shared_memory=shared_memory)
 
     async def collect(self, query: str, max_results: int = 10) -> list[dict[str, Any]]:
-        """Collect web documents for a query."""
-
         documents: list[dict[str, Any]] = []
         for result in await self.search.collect(query, max_results=max_results):
             url = str(result.get("url", ""))
-            if not url:
-                continue
-            documents.extend(await self.scraper.collect(url))
+            if url:
+                documents.extend(await self.scraper.collect(url))
         return documents
 
 

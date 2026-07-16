@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from aria.agents.pdf import PDFAgent
+from aria.engine.collectors.web.pdf import PDFCollector as PDFAgent
 
 
 def test_pdf_agent_alias_exists():

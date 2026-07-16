@@ -289,10 +289,11 @@ def test_resolve_llm_openai_key(monkeypatch):
     assert provider == "openai"
 
 
-def test_resolve_llm_fallback_ollama(monkeypatch):
+def test_resolve_llm_without_configuration_returns_empty(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
     provider, model, base_url, api_key = _resolve_llm(None)
-    assert provider == "ollama"
-    assert api_key == "ollama"
+    assert (provider, model, base_url, api_key) == ("", "", None, "")

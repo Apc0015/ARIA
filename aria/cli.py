@@ -133,31 +133,11 @@ def _run_research(args: argparse.Namespace) -> int:
         print(f"[aria] Error: failed to import ARIA core modules: {exc}", file=sys.stderr)
         return 1
 
-    # Try main orchestrator first (with citation support), fall back if not available
-    MasterOrchestrator = None
     try:
-        from aria.orchestrator.citation_aware import CitationAwareMasterOrchestrator
-        MasterOrchestrator = CitationAwareMasterOrchestrator
-    except ImportError:
-        pass
-    except Exception as exc:
-        print(f"[aria] Warning: citation-aware orchestrator unavailable: {exc}", file=sys.stderr)
-
-    # Fall back to standard orchestrator
-    if MasterOrchestrator is None:
-        try:
-            from aria.orchestrators.master import MasterOrchestrator  # type: ignore[assignment]
-        except ImportError:
-            try:
-                from aria.orchestrator.master import MasterOrchestrator  # type: ignore[assignment]
-            except ImportError as exc:
-                print(
-                    f"[aria] Error: backend (aria.engine) is not installed.\n"
-                    f"       Run: pip install aria.engine\n"
-                    f"       Details: {exc}",
-                    file=sys.stderr,
-                )
-                return 1
+        from aria.engine.orchestrator import MasterOrchestrator
+    except ImportError as exc:
+        print(f"[aria] Error: failed to import the ARIA research engine: {exc}", file=sys.stderr)
+        return 1
 
     output_dir = Path(args.output_dir) if args.output_dir else None
     config = load_config(output_dir=output_dir)
