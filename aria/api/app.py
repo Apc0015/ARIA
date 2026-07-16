@@ -264,8 +264,27 @@ async def root():
 
 
 # Mount React static assets and SPA fallback (must come after all API routes).
+class _SPAStaticFiles(StaticFiles):
+    """Serve index.html for unknown non-API paths (client-side routing).
+
+    Without this, deep links like /settings or /report/<id> 404 on refresh —
+    StaticFiles(html=True) only serves index.html for "/".
+    """
+
+    async def get_response(self, path: str, scope):
+        from starlette.exceptions import HTTPException as StarletteHTTPException
+
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            # Unknown API endpoints must stay JSON 404s, not become HTML.
+            if exc.status_code == 404 and not path.startswith("api"):
+                return await super().get_response("index.html", scope)
+            raise
+
+
 if _REACT_DIST_DIR.exists():
-    app.mount("/", StaticFiles(directory=str(_REACT_DIST_DIR), html=True), name="react")
+    app.mount("/", _SPAStaticFiles(directory=str(_REACT_DIST_DIR), html=True), name="react")
 
 if __name__ == "__main__":
     import uvicorn

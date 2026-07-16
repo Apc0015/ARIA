@@ -24,6 +24,35 @@ except ImportError:
     _TEST_KEY = ""
 
 skip_no_client = pytest.mark.skipif(not HAS_CLIENT, reason="fastapi TestClient not available")
+
+
+@skip_no_client
+class TestSPAFallback:
+    """Deep links into the React app must serve index.html, not JSON 404s."""
+
+    @pytest.fixture()
+    def client(self):
+        from aria.api.app import app, _REACT_DIST_DIR
+
+        if not (_REACT_DIST_DIR / "index.html").exists():
+            pytest.skip("React UI not built (aria-report/dist missing)")
+        with TestClient(app, raise_server_exceptions=False) as c:
+            yield c
+
+    def test_deep_link_serves_index_html(self, client):
+        r = client.get("/settings")
+        assert r.status_code == 200
+        assert "text/html" in r.headers["content-type"]
+
+    def test_parameterized_route_serves_index_html(self, client):
+        r = client.get("/report/some-run-id")
+        assert r.status_code == 200
+        assert "text/html" in r.headers["content-type"]
+
+    def test_unknown_api_path_stays_json_404(self, client):
+        r = client.get("/api/definitely-not-a-route")
+        assert r.status_code == 404
+        assert "application/json" in r.headers["content-type"]
 skip_demo_mode = pytest.mark.skipif(not USE_REAL_BACKEND, reason="aria.engine not installed (demo mode)")
 
 
