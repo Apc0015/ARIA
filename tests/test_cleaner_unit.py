@@ -263,6 +263,8 @@ async def test_clean_document_fallback_returns_merged_doc(monkeypatch, tmp_path)
 # ---------------------------------------------------------------------------
 
 def test_resolve_llm_anthropic_key(monkeypatch):
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "ant-key-123")
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
@@ -273,6 +275,8 @@ def test_resolve_llm_anthropic_key(monkeypatch):
 
 
 def test_resolve_llm_openrouter_key(monkeypatch):
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setenv("OPENROUTER_API_KEY", "or-key-456")
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
@@ -282,6 +286,8 @@ def test_resolve_llm_openrouter_key(monkeypatch):
 
 
 def test_resolve_llm_openai_key(monkeypatch):
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-openai-789")
@@ -290,6 +296,8 @@ def test_resolve_llm_openai_key(monkeypatch):
 
 
 def test_resolve_llm_without_configuration_returns_empty(monkeypatch):
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)

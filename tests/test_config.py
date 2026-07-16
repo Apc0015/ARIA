@@ -105,24 +105,13 @@ def test_load_config_no_output_dir_uses_defaults():
     assert cfg.api_port == int(os.getenv("ARIA_API_PORT", "8765"))
 
 
-def test_with_llm_override_sets_env(tmp_path, monkeypatch):
+def test_config_has_no_env_mutating_llm_override(tmp_path):
+    # with_llm_override wrote user LLM selections into process-wide os.environ,
+    # leaking one caller's provider/key to every other caller (and to other
+    # tests). Removed — brain selection flows through CredentialScope and
+    # resolve_cleaning_llm(overrides=...) instead.
     cfg = load_config(output_dir=tmp_path)
-    cfg.with_llm_override(provider="openai", model="gpt-4o", api_key="sk-test")
-    assert os.environ.get("LLM_PROVIDER") == "openai"
-    assert os.environ.get("OPENAI_MODEL") == "gpt-4o"
-    assert os.environ.get("OPENAI_API_KEY") == "sk-test"
-
-
-def test_with_llm_override_returns_self(tmp_path):
-    cfg = load_config(output_dir=tmp_path)
-    result = cfg.with_llm_override(provider="anthropic")
-    assert result is cfg
-
-
-def test_with_llm_override_ollama_base_url(tmp_path):
-    cfg = load_config(output_dir=tmp_path)
-    cfg.with_llm_override(base_url="http://localhost:9999")
-    assert os.environ.get("OLLAMA_BASE_URL") == "http://localhost:9999"
+    assert not hasattr(cfg, "with_llm_override")
 
 
 def test_load_settings_alias():

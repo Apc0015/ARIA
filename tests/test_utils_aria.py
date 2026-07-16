@@ -98,6 +98,56 @@ def test_is_allowed_constructs_robots_url():
 
 
 # ---------------------------------------------------------------------------
+# allowed_async (robots.txt — collector entry point)
+# ---------------------------------------------------------------------------
+
+async def test_allowed_async_disabled_flag_allows_everything(monkeypatch):
+    import aria.utils.robots as robots_mod
+
+    monkeypatch.setenv("ARIA_RESPECT_ROBOTS", "false")
+    assert await robots_mod.allowed_async("https://example.com/blocked") is True
+
+
+async def test_allowed_async_denies_disallowed_url(monkeypatch):
+    import aria.utils.robots as robots_mod
+
+    monkeypatch.setenv("ARIA_RESPECT_ROBOTS", "true")
+    parser = MagicMock()
+    parser.can_fetch.return_value = False
+    monkeypatch.setattr(robots_mod, "_parser_cache", {"https://example.com": parser})
+    assert await robots_mod.allowed_async("https://example.com/private") is False
+
+
+async def test_allowed_async_unreachable_robots_allows(monkeypatch):
+    import aria.utils.robots as robots_mod
+
+    monkeypatch.setenv("ARIA_RESPECT_ROBOTS", "true")
+    # None in the cache = robots.txt unreachable → fail open
+    monkeypatch.setattr(robots_mod, "_parser_cache", {"https://example.com": None})
+    assert await robots_mod.allowed_async("https://example.com/page") is True
+
+
+async def test_allowed_async_caches_parser_per_origin(monkeypatch):
+    import aria.utils.robots as robots_mod
+
+    monkeypatch.setenv("ARIA_RESPECT_ROBOTS", "true")
+    parser = MagicMock()
+    parser.can_fetch.return_value = True
+    cache: dict = {}
+    monkeypatch.setattr(robots_mod, "_parser_cache", cache)
+    reads = []
+
+    def fake_read(origin):
+        reads.append(origin)
+        return parser
+
+    monkeypatch.setattr(robots_mod, "_read_parser", fake_read)
+    await robots_mod.allowed_async("https://example.com/a")
+    await robots_mod.allowed_async("https://example.com/b")
+    assert reads == ["https://example.com"]  # one fetch per origin
+
+
+# ---------------------------------------------------------------------------
 # detect_language
 # ---------------------------------------------------------------------------
 
