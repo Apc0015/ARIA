@@ -152,28 +152,40 @@ def describe_cleaning_brain(config: Any) -> dict:
     }
 
 
-def resolve_cleaning_llm(config: Any) -> tuple[str, str, Optional[str], str]:
+def resolve_cleaning_llm(
+    config: Any, overrides: Optional[dict] = None
+) -> tuple[str, str, Optional[str], str]:
     """Single source of truth for which LLM to use for cleaning/planning.
 
-    A selected ``LLM_PROVIDER`` takes priority. Otherwise, a configured cloud
-    key is selected in the historical priority order. There is deliberately no
-    pretend local-model fallback: a run must tell the user to connect an LLM.
+    ``overrides`` (a user brain selection: provider/model_id/api_key/base_url)
+    takes priority over the environment, so a UI selection never has to be
+    written into process-wide ``os.environ``. A selected ``LLM_PROVIDER`` comes
+    next. Otherwise, a configured cloud key is selected in the historical
+    priority order. There is deliberately no pretend local-model fallback: a
+    run must tell the user to connect an LLM.
 
     Returns:
         Tuple of (provider, model_id, base_url, api_key).
     """
-    selected = os.getenv("LLM_PROVIDER", "").strip().lower()
+    ov = overrides or {}
+    ov_model = (ov.get("model_id") or ov.get("model") or "").strip()
+    ov_key = (ov.get("api_key") or "").strip()
+    ov_base = (ov.get("base_url") or "").strip()
+    selected = (ov.get("provider") or os.getenv("LLM_PROVIDER", "")).strip().lower()
     defaults = {
         "anthropic": ("ANTHROPIC_API_KEY", "ANTHROPIC_MODEL", "claude-3-haiku-20240307", None),
         "openrouter": ("OPENROUTER_API_KEY", "OPENROUTER_MODEL", "openai/gpt-4o-mini", "https://openrouter.ai/api/v1"),
         "openai": ("OPENAI_API_KEY", "OPENAI_MODEL", "gpt-4o-mini", "https://api.openai.com/v1"),
     }
     if selected == "ollama":
-        base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
-        return ("ollama", os.getenv("OLLAMA_MODEL", "llama3.1:8b"), f"{base_url}/v1", "ollama")
+        base_url = (ov_base or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")).rstrip("/")
+        model = ov_model or os.getenv("OLLAMA_MODEL", "llama3.1:8b")
+        return ("ollama", model, f"{base_url}/v1", "ollama")
     if selected in defaults:
         key_name, model_name, default_model, base_url = defaults[selected]
-        return (selected, os.getenv(model_name, default_model), base_url, os.getenv(key_name, ""))
+        model = ov_model or os.getenv(model_name, default_model)
+        api_key = ov_key or os.getenv(key_name, "")
+        return (selected, model, base_url, api_key)
 
     for provider in ("anthropic", "openrouter", "openai"):
         key_name, model_name, default_model, base_url = defaults[provider]

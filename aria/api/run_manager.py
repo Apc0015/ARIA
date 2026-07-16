@@ -6,7 +6,6 @@ import asyncio
 import json
 import logging
 import os
-import re
 from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,21 +25,7 @@ _logger = logging.getLogger("aria")
 _MAX_CONCURRENT_RUNS = int(os.environ.get("ARIA_MAX_CONCURRENT_RUNS", "20"))
 _RUN_STATE_FILE = "run_state.json"
 
-# Patterns that indicate a secret leaked into an exception message.
-_SECRET_PATTERNS = (
-    re.compile(r"sk-[A-Za-z0-9_-]{20,}"),      # OpenAI / Anthropic style
-    re.compile(r"sk-ant-[A-Za-z0-9_-]{20,}"),  # Anthropic
-    re.compile(r"Bearer\s+[A-Za-z0-9._~+/-]{20,}", re.IGNORECASE),
-    re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,}"),  # Slack tokens
-    re.compile(r"ghp_[A-Za-z0-9]{20,}"),           # GitHub PAT
-    re.compile(r"[A-Za-z0-9_-]{40,}"),             # generic long opaque token
-)
-
-
-def _scrub_secrets(message: str) -> str:
-    for pattern in _SECRET_PATTERNS:
-        message = pattern.sub("[REDACTED]", message)
-    return message
+from aria.utils.scrub import scrub_secrets as _scrub_secrets
 
 
 @dataclass
@@ -290,28 +275,14 @@ class RunManager:
         return load_mission_text(mission_yaml)
 
     def set_brain_config(self, config: dict) -> None:
-        """Store user's cleaning brain selection: {provider, model_id, api_key, base_url}"""
+        """Store user's cleaning brain selection: {provider, model_id, api_key, base_url}.
+
+        Deliberately does NOT touch os.environ: the selection is merged into
+        each run's CredentialScope (see _build_credential_scope) and passed as
+        overrides to resolve_cleaning_llm(), so one caller's key never becomes
+        the process-wide default for other callers.
+        """
         self._brain_config = config
-        # Also set env vars so resolve_cleaning_llm() picks them up
-        provider = config.get("provider", "")
-        api_key = config.get("api_key", "")
-        model_id = config.get("model_id", "")
-        base_url = config.get("base_url", "")
-        import os
-        if provider == "anthropic" and api_key:
-            os.environ["ANTHROPIC_API_KEY"] = api_key
-            os.environ["ANTHROPIC_MODEL"] = model_id
-        elif provider == "openrouter" and api_key:
-            os.environ["OPENROUTER_API_KEY"] = api_key
-            os.environ["OPENROUTER_MODEL"] = model_id
-        elif provider == "openai" and api_key:
-            os.environ["OPENAI_API_KEY"] = api_key
-            os.environ["OPENAI_MODEL"] = model_id
-        elif provider == "ollama":
-            os.environ["OLLAMA_MODEL"] = model_id
-            if base_url:
-                os.environ["OLLAMA_BASE_URL"] = base_url
-        os.environ["LLM_PROVIDER"] = provider
 
     def get_brain_config(self) -> dict:
         """Return current brain config (user-set or auto-detected from env)."""

@@ -14,7 +14,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -37,19 +36,7 @@ from aria.engine.orchestrator.cleaning import run_cleaning_phase
 from aria.engine.orchestrator.enrichment import _score_documents
 from aria.engine.orchestrator.exporting import run_export_phase
 
-_SECRET_RE = re.compile(
-    r"(sk-[A-Za-z0-9_-]{20,}"
-    r"|sk-ant-[A-Za-z0-9_-]{20,}"
-    r"|Bearer\s+[A-Za-z0-9._~+/-]{20,}"
-    r"|xox[baprs]-[A-Za-z0-9-]{10,}"
-    r"|ghp_[A-Za-z0-9]{20,}"
-    r"|[A-Za-z0-9_-]{40,})",
-    re.IGNORECASE,
-)
-
-
-def _scrub(msg: str) -> str:
-    return _SECRET_RE.sub("[REDACTED]", msg)
+from aria.utils.scrub import scrub_secrets as _scrub
 
 
 from aria.engine.cleaner.llm_cleaner import LLMCleaner

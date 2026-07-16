@@ -74,7 +74,39 @@ _FIELD_ENV_MAP = {
 
 _ENV_FIELD_MAP = {env: attr for attr, env in _FIELD_ENV_MAP.items()}
 _ENV_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
-_ENV_LOCK = asyncio.Lock()
+
+
+class _EnvRWLock:
+    """Async readers-writer lock guarding os.environ overlays.
+
+    Runs whose overlay is a no-op against the current environment are
+    "readers" and may proceed concurrently. Runs that actually need to
+    mutate the environment are "writers" and get exclusive access — they
+    block (and are blocked by) all other runs while their overlay is live.
+    """
+
+    def __init__(self) -> None:
+        self._readers = 0
+        self._readers_mutex = asyncio.Lock()
+        self._writer_lock = asyncio.Lock()
+
+    async def acquire_read(self) -> None:
+        async with self._readers_mutex:
+            self._readers += 1
+            if self._readers == 1:
+                await self._writer_lock.acquire()
+
+    async def release_read(self) -> None:
+        async with self._readers_mutex:
+            self._readers -= 1
+            if self._readers == 0:
+                self._writer_lock.release()
+
+    def writer(self) -> asyncio.Lock:
+        return self._writer_lock
+
+
+_ENV_LOCK = _EnvRWLock()
 
 
 def _coerce_env_key(key: str) -> str | None:
@@ -210,11 +242,39 @@ class CredentialScope:
         return self.to_env().get(env_name, "")
 
 
+def _is_noop(overrides: dict[str, str]) -> bool:
+    return all(os.environ.get(k) == v for k, v in overrides.items())
+
+
 @contextlib.asynccontextmanager
 async def scoped_environ(overrides: dict[str, str]):
-    """Temporarily apply env overrides with a process-wide async lock."""
+    """Temporarily apply env overrides, serializing only when necessary.
+
+    The overlay for most runs equals the process environment (credentials come
+    from .env / the shared saved store), so applying it changes nothing. Those
+    runs take a shared read slot and execute CONCURRENTLY. Only a run whose
+    overlay genuinely differs takes the exclusive writer lock — it waits for
+    in-flight runs, applies its overlay, and restores the environment when done.
+
+    This keeps per-run credential overrides correct without the old behavior
+    of serializing every run behind a single process-wide lock.
+    """
     clean = {k: str(v) for k, v in overrides.items() if k and v}
-    async with _ENV_LOCK:
+
+    if _is_noop(clean):
+        await _ENV_LOCK.acquire_read()
+        try:
+            # Recheck under the read slot: while we hold it no writer can be
+            # active, so the environment is authoritative base state.
+            if _is_noop(clean):
+                yield
+                return
+        finally:
+            await _ENV_LOCK.release_read()
+        # Classification changed between check and acquisition — fall through
+        # to the writer path. (release_read above already ran.)
+
+    async with _ENV_LOCK.writer():
         old: dict[str, str | None] = {k: os.environ.get(k) for k in clean}
         try:
             os.environ.update(clean)

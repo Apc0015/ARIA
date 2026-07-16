@@ -13,6 +13,16 @@ PACKAGE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = PACKAGE_ROOT.parent
 DATA_ROOT = PROJECT_ROOT / "data"
 
+# Load .env explicitly and predictably (never overriding real env vars).
+# Previously .env was only picked up as an import side effect of crawl4ai,
+# so configuration silently depended on an optional third-party library.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(PROJECT_ROOT / ".env", override=False)
+except ImportError:  # pragma: no cover — python-dotenv is a core requirement
+    pass
+
 
 class Config(BaseModel):
     """ARIA configuration."""
@@ -67,27 +77,6 @@ class Config(BaseModel):
         ]:
             path.mkdir(parents=True, exist_ok=True)
 
-    def with_llm_override(
-        self,
-        provider: str | None = None,
-        model: str | None = None,
-        api_key: str | None = None,
-        base_url: str | None = None,
-    ) -> "Config":
-        """Apply LLM provider overrides via env vars so downstream components pick them up."""
-        import os
-
-        if provider:
-            os.environ["LLM_PROVIDER"] = provider
-        if model:
-            prefix = provider.upper() if provider else "LLM"
-            os.environ[f"{prefix}_MODEL"] = model
-        if api_key:
-            prefix = provider.upper() if provider else "LLM"
-            os.environ[f"{prefix}_API_KEY"] = api_key
-        if base_url:
-            os.environ["OLLAMA_BASE_URL"] = base_url
-        return self
 
 
 def load_config(output_dir: Path | None = None) -> Config:

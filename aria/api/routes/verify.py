@@ -5,11 +5,18 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from aria.types.credentials import scoped_environ
+from aria.utils.scrub import scrub_secrets
 
 router = APIRouter()
+
+
+def _brain_overrides(request: Request) -> dict | None:
+    """User-selected cleaning brain, when the real backend is active."""
+    run_manager = getattr(request.app.state, "run_manager", None)
+    return getattr(run_manager, "_brain_config", None) if run_manager else None
 
 
 @router.post("/api/credentials/verify")
@@ -45,16 +52,20 @@ async def verify_credential(payload: dict[str, Any]):
             "message": "Connected ✓" if result else "Credentials not accepted",
         }
     except Exception as exc:
-        return {"ok": False, "message": str(exc)[:300]}
+        # Scrub before echoing: HTTP client errors can embed the submitted
+        # credential in URLs or headers.
+        return {"ok": False, "message": scrub_secrets(str(exc))[:300]}
 
 
 @router.get("/api/llm/status")
-async def llm_status():
+async def llm_status(request: Request):
     """Return the active LLM provider and model as resolved by the cleaning pipeline."""
     try:
         from aria.engine.ensemble.providers import resolve_cleaning_llm
 
-        provider, model_id, base_url, api_key = resolve_cleaning_llm(None)
+        provider, model_id, base_url, api_key = resolve_cleaning_llm(
+            None, overrides=_brain_overrides(request)
+        )
         base_url = base_url or ""
 
         if not provider:
@@ -116,7 +127,7 @@ async def llm_status():
             "base_url": "",
             "configured": False,
             "connected": False,
-            "message": str(exc),
+            "message": scrub_secrets(str(exc))[:300],
         }
 
 
