@@ -78,7 +78,7 @@ export default function Monitor() {
     <div className="flex flex-col h-full overflow-hidden">
       <PageTopbar
         title="Live Monitor"
-        subtitle={run?.topic ?? runId}
+        subtitle={run?.topic ?? "Untitled run"}
       />
 
       <div className="flex-1 overflow-y-auto p-5 pb-16 md:pb-5 space-y-4">

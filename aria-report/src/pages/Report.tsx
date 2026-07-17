@@ -1,5 +1,4 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
 import { Download, Play, FileText, FileJson, Table } from "lucide-react";
 import { PageTopbar } from "@/components/layout/PageTopbar";
 import { GlassCard } from "@/components/glass/GlassCard";
@@ -11,9 +10,6 @@ import { useRuns } from "@/hooks/useRuns";
 import { api } from "@/lib/api";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
-
-const stagger = { animate: { transition: { staggerChildren: 0.04 } } };
-const item = {}; // entrance handled at page level
 
 export default function Report() {
   const { runId } = useParams<{ runId: string }>();
@@ -109,12 +105,12 @@ export default function Report() {
     <div className="flex flex-col h-full overflow-hidden">
       <PageTopbar
         title="Report"
-        subtitle={run?.topic ?? runId}
+        subtitle={run?.topic ?? "Untitled run"}
         action={
           <Button
             size="sm"
-            variant="outline"
-            className="text-[11px] h-7 border-[var(--aria-border)] bg-transparent text-aria-text2 hover:bg-[rgba(255,255,255,0.03)] rounded-[6px]"
+            variant="subtle"
+            className="text-[13px] h-7 px-3.5 font-medium"
             onClick={() => navigate("/launch")}
           >
             <Play size={11} className="mr-1" /> Re-run
@@ -122,53 +118,55 @@ export default function Report() {
         }
       />
 
-      <div className="flex-1 overflow-y-auto p-5 pb-16 md:pb-5 space-y-4">
-        <motion.div variants={stagger} initial="initial" animate="animate" className="space-y-4">
+      <div className="flex-1 overflow-y-auto p-5 pb-16 md:pb-5">
+        <div className="space-y-4 max-w-5xl">
 
           {/* Summary */}
-          <motion.div variants={item}>
-            <GlassCard className="p-5 space-y-4">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h2 className="text-[18px] font-semibold text-aria-text1 tracking-body-lg">
-                    {run?.topic ?? "Research Run"}
-                  </h2>
-                  <p className="text-[12px] text-aria-text4 mt-1">
+          <GlassCard className="p-5 space-y-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <h2 className="text-[18px] font-semibold text-aria-text1 leading-tight">
+                  {run?.topic ?? "Untitled run"}
+                </h2>
+                <p className="mt-1 flex items-center gap-1.5 text-[12px] text-aria-text4">
+                  <span>
                     {run?.updated_at
                       ? `Completed ${formatDistanceToNow(new Date(run.updated_at), { addSuffix: true })}`
-                      : "—"}
-                  </p>
-                </div>
-                <Badge className="bg-aria-success/20 text-aria-success border-aria-success/30 text-[11px] flex-shrink-0">
-                  {totalDocs.toLocaleString()} docs
-                </Badge>
+                      : "Completed"}
+                  </span>
+                  <span aria-hidden>·</span>
+                  <span className="font-mono">{runId}</span>
+                </p>
               </div>
+              <Badge className="bg-aria-success/15 text-aria-success border-aria-success/25 text-[11px] flex-shrink-0 tabular-nums">
+                {totalDocs.toLocaleString()} documents
+              </Badge>
+            </div>
 
-              {/* Export buttons */}
-              <div className="flex flex-wrap gap-2">
-                {[
-                  { label: "Markdown", icon: FileText, kind: "markdown" as const },
-                  { label: "JSON", icon: FileJson, kind: "json" as const },
-                  { label: "CSV", icon: Table, kind: "csv" as const },
-                  { label: "Raw", icon: Download, kind: "raw" as const },
-                ].map(({ label, icon: Icon, kind }) => (
-                  <Button
-                    key={label}
-                    size="sm"
-                    variant="outline"
-                    className="text-[11px] h-8 border-[var(--aria-border)] bg-transparent text-aria-text2 hover:bg-[rgba(255,255,255,0.03)] rounded-[6px]"
-                    onClick={() => download(kind)}
-                  >
-                    <Icon size={11} className="mr-1.5" /> {label}
-                  </Button>
-                ))}
-              </div>
-            </GlassCard>
-          </motion.div>
+            {/* Export buttons */}
+            <div className="flex flex-wrap gap-2">
+              {[
+                { label: "Markdown", icon: FileText, kind: "markdown" as const },
+                { label: "JSON", icon: FileJson, kind: "json" as const },
+                { label: "CSV", icon: Table, kind: "csv" as const },
+                { label: "Raw", icon: Download, kind: "raw" as const },
+              ].map(({ label, icon: Icon, kind }) => (
+                <Button
+                  key={label}
+                  size="sm"
+                  variant="subtle"
+                  className="text-[12px] h-8 px-3 font-medium"
+                  onClick={() => download(kind)}
+                >
+                  <Icon size={11} className="mr-1.5" /> {label}
+                </Button>
+              ))}
+            </div>
+          </GlassCard>
 
           {/* Documents table */}
           {docs.length > 0 && (
-            <motion.div variants={item}>
+            <div>
               <p className="text-[11px] font-medium text-aria-text3 mb-2">
                 Documents ({totalDocs.toLocaleString()})
               </p>
@@ -208,9 +206,9 @@ export default function Report() {
                   </table>
                 </div>
               </GlassCard>
-            </motion.div>
+            </div>
           )}
-        </motion.div>
+        </div>
       </div>
     </div>
   );

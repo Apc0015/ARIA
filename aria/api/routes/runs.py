@@ -4,36 +4,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from aria.api.run_manager import RunManager
+from aria.api.run_manager import RunManager, clean_topic as _clean_topic
 
 router = APIRouter()
 
 
 async def get_run_manager(request: Request) -> RunManager:
     return request.app.state.run_manager
-
-
-import re as _re
-
-_TOPIC_JUNK = {"mission:", "collection:", "research", "null", "none", "topic:"}
-
-
-def _clean_topic(topic: str | None, run_id: str) -> str | None:
-    """Return a human topic, or None so the UI shows "Untitled run".
-
-    Rejects the run-id hash, YAML/JSON fragments left by malformed pastes,
-    and anything without a real word — never surfaces a machine string.
-    """
-    if not topic:
-        return None
-    t = str(topic).strip()
-    if len(t) < 4 or t == run_id or t.lower() in _TOPIC_JUNK:
-        return None
-    if t.startswith("Hydrated from") or t.endswith(":") or t[0] in "{}[]\"'":
-        return None
-    if not _re.search(r"[A-Za-z]{3,}", t):  # must contain at least one word
-        return None
-    return t
 
 
 def _ui_payload_to_mission_yaml(payload: dict) -> str:

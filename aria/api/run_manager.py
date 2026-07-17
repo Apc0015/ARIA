@@ -27,6 +27,29 @@ _RUN_STATE_FILE = "run_state.json"
 
 from aria.utils.scrub import scrub_secrets as _scrub_secrets
 
+import re as _re
+
+_TOPIC_JUNK = {"mission:", "collection:", "research", "null", "none", "topic:"}
+
+
+def clean_topic(topic: str | None, run_id: str) -> str | None:
+    """Return a human research topic, or None if only a machine string exists.
+
+    Rejects the run-id hash, YAML/JSON fragments left by malformed pastes,
+    and anything without a real word — so the UI never shows an identifier
+    as a title. Single source of truth used by every run-listing endpoint.
+    """
+    if not topic:
+        return None
+    t = str(topic).strip()
+    if len(t) < 4 or t == run_id or t.lower() in _TOPIC_JUNK:
+        return None
+    if t.startswith("Hydrated from") or t.endswith(":") or t[0] in "{}[]\"'":
+        return None
+    if not _re.search(r"[A-Za-z]{3,}", t):  # must contain at least one word
+        return None
+    return t
+
 
 @dataclass
 class RunState:
@@ -505,7 +528,9 @@ class RunManager:
                 "ensemble_documents": state.ensemble_documents,
                 "docs_collected": docs_collected,
                 "docs_cleaned": docs_cleaned,
-                "topic": collection.get("topic") or state.stats.get("topic") or state.message,
+                "topic": clean_topic(
+                    collection.get("topic") or state.stats.get("topic"), state.run_id
+                ),
                 "sources_used": collection.get("sources", {}).get("enabled", []),
                 "total_documents": total_documents,
                 "progress": progress,
