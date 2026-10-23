@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { RunRow } from "@/components/shared/RunRow";
 import { useRun, useRunDocuments } from "@/hooks/useRun";
 import { useRuns } from "@/hooks/useRuns";
+import { useRunStream } from "@/hooks/useRunStream";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 
@@ -20,6 +21,7 @@ export default function Monitor() {
   const { data: runsData, isLoading: runsLoading } = useRuns();
   const { data: run } = useRun(runId ?? "", Boolean(runId));
   const { data: docsData } = useRunDocuments(runId ?? "", Boolean(runId));
+  useRunStream(runId);
 
   useEffect(() => {
     if (runId && (run?.status === "completed" || run?.status === "completed_with_failures" || run?.status === "collection_completed" || run?.status === "failed")) {

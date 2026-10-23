@@ -34,6 +34,7 @@ from aria.api.routes.auth import router as auth_router
 from aria.api.routes.organization import router as organization_router
 from aria.api.routes.source_settings import router as source_settings_router
 from aria.api.routes.seed import router as seed_router
+from aria.api.routes.stream import router as stream_router
 
 # Kept as a compatibility signal for existing integrations. There is no demo
 # implementation: import failures now fail startup instead of serving fake data.
@@ -109,6 +110,7 @@ app.include_router(chat_router)
 app.include_router(director_router)
 app.include_router(sources_router)
 app.include_router(seed_router)       # Seed paper preview for citation crawl
+app.include_router(stream_router)     # Live run events (SSE)
 
 # ---------------------------------------------------------------------------
 # Root endpoint (always present)

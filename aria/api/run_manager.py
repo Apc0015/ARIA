@@ -46,6 +46,7 @@ _SAAS_CREDENTIAL_KEYS = credential_environment_keys() | {
 }
 
 from aria.utils.scrub import scrub_secrets as _scrub_secrets
+from aria.api.events import publish_event
 
 import re as _re
 
@@ -321,6 +322,17 @@ class RunManager:
 
     def _persist_state(self, state: RunState) -> None:
         """Persist non-secret run state so API restarts keep history/downloads."""
+        publish_event(
+            state.run_id,
+            "status",
+            {
+                "status": state.status,
+                "stage": state.stage,
+                "message": state.message,
+                "docs_collected": state.docs_collected,
+                "docs_cleaned": state.docs_cleaned,
+            },
+        )
         if not state.output_dir:
             return
         path = self._state_path(state)
@@ -674,6 +686,7 @@ class RunManager:
                     state.failures.append({"scope": "source", **source_state})
             state.updated_at = datetime.now(timezone.utc).isoformat()
             self._persist_state(state)
+        publish_event(run_id, event.get("stage") or "event", event)
 
     async def _complete_run(self, run_id: str, result: RunResult) -> None:
         async with self._lock:
