@@ -3,6 +3,7 @@ import { Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, MotionConfig, motion } from "framer-motion";
 import { Toaster } from "sonner";
 import { AppSidebar } from "@/components/layout/AppSidebar";
+import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { useTheme } from "@/hooks/useTheme";
 import { api } from "@/lib/api";
 
@@ -12,6 +13,11 @@ const pageVariants = {
   animate: { opacity: 1, y: 0, transition: { duration: 0.22, ease: [0.32, 0.72, 0, 1] } },
   exit: { opacity: 0, transition: { duration: 0.1 } },
 };
+
+function routeName(pathname: string): string {
+  const segment = pathname.split("/")[1] || "dashboard";
+  return segment.charAt(0).toUpperCase() + segment.slice(1);
+}
 
 export default function App() {
   const location = useLocation();
@@ -43,7 +49,9 @@ export default function App() {
             exit="exit"
             className="flex-1 flex flex-col overflow-hidden"
           >
-            <Outlet />
+            <ErrorBoundary key={location.pathname} context={routeName(location.pathname)}>
+              <Outlet />
+            </ErrorBoundary>
           </motion.div>
         </AnimatePresence>
       </main>
