@@ -43,3 +43,6 @@ data/aria_saas.db-*
 
 # Generated audit reports at repo root
 /*.docx
+
+# Citation crawl outputs
+data/citation-graph/

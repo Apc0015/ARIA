@@ -1,6 +1,14 @@
 import asyncio
 
-from aria.utils.url import is_safe_public_http_destination, is_safe_public_http_url
+import httpx
+import pytest
+
+from aria.utils.url import (
+    UnsafeDestinationError,
+    ensure_public_http_request,
+    is_safe_public_http_destination,
+    is_safe_public_http_url,
+)
 
 
 def test_public_http_url_safety_allows_public_hosts():
@@ -29,3 +37,21 @@ def test_hostname_resolution_rejects_private_network_answers(monkeypatch):
 
     monkeypatch.setattr(asyncio, "get_running_loop", lambda: PrivateLoop())
     assert not asyncio.run(is_safe_public_http_destination("https://research.example/"))
+
+
+def test_request_hook_blocks_redirect_to_private_address():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "8.8.8.8":
+            return httpx.Response(302, headers={"Location": "http://169.254.169.254/latest/meta-data/"})
+        return httpx.Response(200, text="metadata")
+
+    async def fetch() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler),
+            follow_redirects=True,
+            event_hooks={"request": [ensure_public_http_request]},
+        ) as client:
+            await client.get("http://8.8.8.8/paper")
+
+    with pytest.raises(UnsafeDestinationError):
+        asyncio.run(fetch())

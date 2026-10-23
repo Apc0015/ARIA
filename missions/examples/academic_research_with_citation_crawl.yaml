@@ -1,0 +1,55 @@
+# ARIA Mission — Academic Research with Citation Graph Crawl
+# -----------------------------------------------------------------
+# This mission template demonstrates the citation_crawl pre-collection phase.
+# Provide a seed_doi and/or seed_url to activate it. ARIA will:
+#   1. Fetch the seed paper (Level 0) and extract its full text
+#   2. Parse all references from the seed paper
+#   3. Resolve metadata + abstracts for each Level 1 reference
+#   4. Fetch full text for open-access Level 1 papers
+#   5. Write corpus.json, references-level0.bib, missing-full-text.md
+#   6. Continue with normal web collection using the topic below
+# -----------------------------------------------------------------
+
+collection:
+  topic: "Narrative competition societal instability Burkina Faso coups"
+  intent: "Understand the role of narrative competition and information campaigns in driving societal instability and military coups in Sahel countries"
+  max_documents: 300
+  depth: 3
+
+  sources:
+    enabled:
+      - web
+      - academic
+      - news
+      - government
+
+# ── Citation Crawl Configuration ─────────────────────────────────────────────
+citation_crawl:
+  enabled: true
+
+  # Seed paper — the paper whose reference list you want to crawl
+  seed_doi: "10.5787/52-3-1483"
+  seed_url: "https://scielo.org.za/scielo.php?script=sci_arttext&pid=S2224-00202024000300005"
+
+  # How many citation levels to follow (only 1 supported: seed + its references)
+  levels: 1
+
+  # Attempt to resolve DOI + abstract via CrossRef / Semantic Scholar for each ref
+  resolve_abstracts: true
+
+  # Attempt to fetch full text for open-access Level 1 papers
+  fetch_open_access: true
+
+  # Maximum number of Level 1 references to process
+  max_refs: 100
+
+  # Subdirectory under the run output dir where citation files are written
+  output_subdir: "citation-graph"
+
+# ── Output ───────────────────────────────────────────────────────────────────
+output:
+  formats:
+    - json
+    - csv
+    - markdown
+  export_dir: "./data/exports"

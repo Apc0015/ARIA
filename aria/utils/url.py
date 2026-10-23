@@ -115,3 +115,17 @@ async def is_safe_public_http_destination(url: str) -> bool:
         return all(ipaddress.ip_address(address).is_global for address in addresses)
     except ValueError:
         return False
+
+
+class UnsafeDestinationError(Exception):
+    """Raised when an outbound request targets a non-public address."""
+
+
+async def ensure_public_http_request(request) -> None:
+    """httpx request event hook that blocks non-public destinations.
+
+    httpx runs request hooks for every hop, so this also covers redirects
+    that bounce a public URL onto a private or metadata address.
+    """
+    if not await is_safe_public_http_destination(str(request.url)):
+        raise UnsafeDestinationError(f"Blocked non-public destination: {request.url.host}")

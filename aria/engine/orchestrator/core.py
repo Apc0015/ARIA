@@ -35,6 +35,12 @@ from aria.engine.orchestrator.dedup import _content_fingerprint
 from aria.engine.orchestrator.cleaning import run_cleaning_phase
 from aria.engine.orchestrator.enrichment import _score_documents, run_enrichment_phase
 from aria.engine.orchestrator.exporting import run_export_phase
+from aria.engine.orchestrator.citation_crawl import (
+    citation_crawl_enabled,
+    run_citation_crawl_phase,
+)
+from aria.engine.output.citation_exporter import CitationExporter
+from aria.engine.output.bibtex import BibTeXExporter
 
 from aria.utils.scrub import scrub_secrets as _scrub
 
@@ -268,6 +274,32 @@ class InfoCollectorOrchestrator:
                     mission["_domain_plan"] = dp
                 except Exception as exc:
                     self._log.debug("Auto domain plan failed (falling back to standard): %s", exc)
+
+        # ── Citation Crawl (optional pre-collection phase) ────────────────────
+        if citation_crawl_enabled(mission):
+            await self._emit("citation_crawl", "Citation crawl phase starting…")
+            try:
+                citation_records = await run_citation_crawl_phase(
+                    mission_config=mission,
+                    output_dir=str(run_dir),
+                    emit_fn=self._event_callback,
+                    log=self._log,
+                )
+                if citation_records:
+                    # Export corpus.json + bibtex + missing-full-text.md
+                    citation_paths = CitationExporter(str(run_dir)).export(citation_records)
+                    citation_paths["bibtex"] = BibTeXExporter(str(run_dir)).export(
+                        citation_records,
+                        filename="references-level0.bib",
+                        level=1,
+                    )
+                    await self._emit(
+                        "citation_crawl",
+                        "Citation crawl outputs written: corpus.json, references-level0.bib, missing-full-text.md",
+                        export_paths=citation_paths,
+                    )
+            except Exception as exc:
+                self._log.warning("Citation crawl phase failed (non-fatal): %s", _scrub(str(exc)))
 
         # ── Planning ─────────────────────────────────────────────────────────
         research_brief = mission.get("_research_brief")
