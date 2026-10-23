@@ -37,26 +37,6 @@ export const LLM_CLOUD_PROVIDERS: LLMProviderDef[] = [
     ],
   },
   {
-    id: "gemini",
-    name: "Google Gemini",
-    icon: "✨",
-    defaultModels: ["gemini-2.0-flash", "gemini-2.5-pro"],
-    fields: [
-      { key: "GEMINI_API_KEY", label: "API Key", placeholder: "AIza...", type: "password", required: true },
-      { key: "GEMINI_MODEL", label: "Model", placeholder: "gemini-2.0-flash", type: "text", required: false },
-    ],
-  },
-  {
-    id: "cohere",
-    name: "Cohere",
-    icon: "🌊",
-    defaultModels: ["command-r-plus", "command-r"],
-    fields: [
-      { key: "COHERE_API_KEY", label: "API Key", placeholder: "...", type: "password", required: true },
-      { key: "COHERE_MODEL", label: "Model", placeholder: "command-r-plus", type: "text", required: false },
-    ],
-  },
-  {
     id: "openrouter",
     name: "OpenRouter",
     icon: "🔀",

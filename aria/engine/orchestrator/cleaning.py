@@ -65,4 +65,10 @@ async def run_cleaning_phase(
         return clean_docs
     except Exception as exc:
         _log.warning("Cleaning phase failed, returning raw docs: %s", exc)
+        if emit_fn:
+            await emit_fn(
+                "clean_failed",
+                "AI cleaning failed; raw documents were retained without analysis.",
+                error=str(exc),
+            )
         return raw_docs

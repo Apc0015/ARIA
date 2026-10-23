@@ -16,18 +16,18 @@ import { toast } from "sonner";
 import { useCredentials, useSaveCredentials } from "@/hooks/useCredentials";
 import { SOURCE_CATEGORIES, sourcesByCategory } from "@/lib/sources";
 import { LLM_CLOUD_PROVIDERS, ENSEMBLE_STRATEGIES } from "@/lib/llm-providers";
-import { api, getApiKey, setApiKey } from "@/lib/api";
+import { api } from "@/lib/api";
 import type { SourceCategory } from "@/lib/sources";
 import type { EnsembleStrategy } from "@/lib/llm-providers";
 
 const SECTIONS = [
   { id: "connections", label: "Connections" },
   { id: "llm-cloud",   label: "LLM — Cloud" },
-  { id: "llm-local",   label: "LLM — Local" },
   { id: "llm-ensemble",label: "LLM Ensemble" },
   { id: "mission",     label: "Default Mission" },
   { id: "output",      label: "Output" },
   { id: "appearance",  label: "Appearance" },
+  { id: "security",    label: "Security" },
 ] as const;
 
 type SectionId = typeof SECTIONS[number]["id"];
@@ -69,17 +69,16 @@ export default function Settings() {
   const { theme, toggle: toggleTheme } = useTheme();
   const saveCredentials = useSaveCredentials();
 
-  const [apiKeyInput, setApiKeyInput] = useState(getApiKey());
   const [localCreds, setLocalCreds]         = useState<Record<string, string>>({});
-  const [localLLMEnabled, setLocalLLMEnabled] = useState(false);
-  const [ollamaUrl, setOllamaUrl]           = useState("http://localhost:11434");
-  const [ollamaModel, setOllamaModel]       = useState("llama3.1:8b");
-  const [ollamaModels, setOllamaModels]     = useState<string[]>([]);
   const [ensembleEnabled, setEnsembleEnabled] = useState(false);
   const [ensembleModels, setEnsembleModels] = useState<string[]>([]);
   const [ensembleStrategy, setEnsembleStrategy] = useState<EnsembleStrategy>("voting");
   const [outputFormats, setOutputFormats]   = useState({ pdf: false, json: true, csv: true, markdown: true });
   const [defaultMission, setDefaultMission] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
 
   // Verify state per source
   const [verifyStatus, setVerifyStatus] = useState<Record<string, VerifyStatus>>({});
@@ -95,14 +94,6 @@ export default function Settings() {
       .catch(() => {});
   }, [activeSection]);
 
-  // Fetch Ollama models when URL changes
-  useEffect(() => {
-    if (!localLLMEnabled) return;
-    api.llm.models("ollama", ollamaUrl)
-      .then((r) => setOllamaModels(r.models))
-      .catch(() => setOllamaModels([]));
-  }, [ollamaUrl, localLLMEnabled]);
-
   function getCredValue(key: string): string {
     const flat = creds?.[key];
     return localCreds[key] ?? (typeof flat === "string" ? flat : undefined) ?? creds?.platforms?.[key] ?? "";
@@ -114,11 +105,6 @@ export default function Settings() {
 
   function saveSection() {
     const merged: Record<string, string> = { ...localCreds };
-    if (localLLMEnabled) {
-      merged["OLLAMA_BASE_URL"] = ollamaUrl;
-      merged["OLLAMA_MODEL"]    = ollamaModel;
-      merged["LLM_PROVIDER"]    = "ollama";
-    }
     if (ensembleEnabled) {
       merged["LLM_ENSEMBLE_ENABLED"]  = "true";
       merged["LLM_ENSEMBLE_MODELS"]   = ensembleModels.join(",");
@@ -133,10 +119,6 @@ export default function Settings() {
     });
   }
 
-  function saveApiKey() {
-    setApiKey(apiKeyInput.trim());
-    toast.success(apiKeyInput.trim() ? "API key saved locally" : "API key cleared");
-  }
 
   async function verifySource(srcId: string, credFields: { key: string }[]) {
     setVerifyStatus((s) => ({ ...s, [srcId]: "loading" }));
@@ -154,7 +136,7 @@ export default function Settings() {
     }
   }
 
-  async function verifyCloudLLM(providerId: string, keyField: string) {
+  function checkCloudLLMKeyFormat(providerId: string, keyField: string) {
     setVerifyStatus((s) => ({ ...s, [providerId]: "loading" }));
     const key = getCredValue(keyField);
     if (!key) {
@@ -162,12 +144,12 @@ export default function Settings() {
       setVerifyStatus((s) => ({ ...s, [providerId]: "fail" }));
       return;
     }
-    // Test by calling the LLM models endpoint (cloud providers just return static list)
-    // A real test would call the provider's API; for now we just validate key format
+    // Cloud providers do not expose a free, uniform credential probe. Do not
+    // claim a network verification here; the first research run checks it.
     const looks_valid = key.length > 10;
     setVerifyStatus((s) => ({ ...s, [providerId]: looks_valid ? "ok" : "fail" }));
-    setVerifyMsg((m) => ({ ...m, [providerId]: looks_valid ? "API key format OK — will validate on first run" : "Key too short" }));
-    if (looks_valid) toast.success(`${providerId}: key saved`);
+    setVerifyMsg((m) => ({ ...m, [providerId]: looks_valid ? "Format looks valid. Save, then ARIA confirms it on your first run." : "Key is too short" }));
+    if (looks_valid) toast.info(`${providerId}: key format looks valid`);
     else             toast.error(`${providerId}: key looks invalid`);
   }
 
@@ -177,19 +159,25 @@ export default function Settings() {
     toast.info(`Active LLM set to ${providerId} — click Save to apply`);
   }
 
-  function testOllama() {
-    fetch(`${ollamaUrl}/api/tags`)
-      .then((r) => r.json())
-      .then((d) => {
-        const modelList: string[] = (d.models || []).map((m: { name: string }) => m.name);
-        setOllamaModels(modelList);
-        toast.success(`Ollama connected — ${modelList.length} models available`);
-        setVerifyStatus((s) => ({ ...s, ollama: "ok" }));
-      })
-      .catch(() => {
-        toast.error("Cannot reach Ollama — is it running?");
-        setVerifyStatus((s) => ({ ...s, ollama: "fail" }));
-      });
+  async function changePassword() {
+    if (newPassword.length < 12) {
+      toast.error("New password must be at least 12 characters");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error("New password confirmation does not match");
+      return;
+    }
+    setChangingPassword(true);
+    try {
+      await api.auth.changePassword(currentPassword, newPassword);
+      toast.success("Password changed. Sign in again with your new password.");
+      window.setTimeout(() => window.location.assign("/login"), 500);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not change password");
+    } finally {
+      setChangingPassword(false);
+    }
   }
 
   function VerifyIcon({ status }: { status: VerifyStatus }) {
@@ -203,7 +191,7 @@ export default function Settings() {
     <div className="flex flex-col h-full overflow-hidden">
       <PageTopbar
         title="Settings"
-        action={
+        action={activeSection !== "security" ? (
           <Button
             size="sm"
             variant="primary" className="h-7 px-3.5 text-[13px] font-medium"
@@ -212,7 +200,7 @@ export default function Settings() {
           >
             {saveCredentials.isPending ? "Saving…" : "Save"}
           </Button>
-        }
+        ) : undefined}
       />
 
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -249,26 +237,6 @@ export default function Settings() {
             {/* ── Connections ─────────────────────────────────────────────── */}
             {activeSection === "connections" && (
               <motion.div className="space-y-3">
-                <GlassCard className="p-3 space-y-2">
-                  <Label className="text-[11px] text-aria-text4">ARIA API Key</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      type="password"
-                      value={apiKeyInput}
-                      onChange={(e) => setApiKeyInput(e.target.value)}
-                      placeholder="Paste ARIA_API_KEY"
-                      className="h-8 bg-transparent border-[var(--aria-border)] text-aria-text2 placeholder:text-aria-text4 text-[12px] focus-visible:ring-aria-accent rounded-[6px]"
-                    />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 border-[var(--aria-border)] bg-transparent text-aria-text2 hover:bg-[rgba(255,255,255,0.03)] rounded-[6px]"
-                      onClick={saveApiKey}
-                    >
-                      Save key
-                    </Button>
-                  </div>
-                </GlassCard>
                 <p className="text-[11px] text-aria-text4 mb-4">
                   Configure API keys for each source connector. Click <strong>Verify</strong> to test the connection.
                 </p>
@@ -372,7 +340,7 @@ export default function Settings() {
                           )}
                           <VerifyIcon status={vs} />
                           {configured ? (
-                            <span className="text-[9px] text-aria-success bg-aria-success/10 border border-aria-success/20 px-1.5 py-px rounded-full">Configured ✓</span>
+                            <span className="text-[9px] text-aria-success bg-aria-success/10 border border-aria-success/20 px-1.5 py-px rounded-full">Key present</span>
                           ) : (
                             <span className="text-[9px] text-aria-text4 bg-[var(--aria-surface)] border border-[var(--aria-border)] px-1.5 py-px rounded-full">Not set</span>
                           )}
@@ -427,12 +395,12 @@ export default function Settings() {
                                 size="sm"
                                 variant="outline"
                                 className="text-[11px] h-7 border-[var(--aria-border)] bg-transparent text-aria-text2 hover:bg-[rgba(255,255,255,0.03)] rounded-[6px]"
-                                onClick={() => keyField && verifyCloudLLM(provider.id, keyField.key)}
+                                onClick={() => keyField && checkCloudLLMKeyFormat(provider.id, keyField.key)}
                                 disabled={vs === "loading"}
                               >
                                 {vs === "loading" ? (
-                                  <><Loader2 size={11} className="animate-spin mr-1" />Verifying…</>
-                                ) : "Verify"}
+                                  <><Loader2 size={11} className="animate-spin mr-1" />Checking…</>
+                                ) : "Check format"}
                               </Button>
                               <Button
                                 size="sm"
@@ -457,108 +425,6 @@ export default function Settings() {
                     </Collapsible>
                   );
                 })}
-              </motion.div>
-            )}
-
-            {/* ── LLM Local (Ollama) ─────────────────────────────────────── */}
-            {activeSection === "llm-local" && (
-              <motion.div className="space-y-4">
-                <ActiveLLMBadge llmStatus={llmStatus} />
-                <GlassCard className="p-4 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-[13px] font-semibold text-aria-text1">Local LLM (Ollama)</p>
-                      <p className="text-[11px] text-aria-text4 mt-0.5">Use a locally running model — no API key needed</p>
-                    </div>
-                    <Switch
-                      checked={localLLMEnabled}
-                      onCheckedChange={setLocalLLMEnabled}
-                      className="data-[state=checked]:bg-aria-accent"
-                      aria-label="Enable local Ollama LLM"
-                    />
-                  </div>
-
-                  {localLLMEnabled && (
-                    <div className="space-y-3 pt-2 border-t border-[var(--aria-border)]">
-                      {/* Base URL */}
-                      <div className="space-y-1">
-                        <Label className="text-[11px] text-aria-text4">Ollama Base URL</Label>
-                        <Input
-                          value={ollamaUrl}
-                          onChange={(e) => setOllamaUrl(e.target.value)}
-                          placeholder="http://localhost:11434"
-                          className="h-8 bg-transparent border-[var(--aria-border)] text-aria-text2 placeholder:text-aria-text4 text-[12px] focus-visible:ring-aria-accent rounded-[6px]"
-                        />
-                      </div>
-
-                      {/* Model selector — shows available models if connected */}
-                      <div className="space-y-1.5">
-                        <Label className="text-[11px] text-aria-text4">Model</Label>
-                        {ollamaModels.length > 0 ? (
-                          <div className="flex flex-wrap gap-1.5">
-                            {ollamaModels.map((m) => (
-                              <button
-                                key={m}
-                                onClick={() => setOllamaModel(m)}
-                                className={`text-[10px] font-medium px-2 py-0.5 rounded-full border transition-all ${
-                                  ollamaModel === m
-                                    ? "text-aria-accent border-aria-accent/40 bg-aria-accent/10"
-                                    : "text-aria-text3 border-[var(--aria-border)] bg-[var(--aria-surface)] hover:border-aria-accent/30"
-                                }`}
-                              >
-                                {m}
-                              </button>
-                            ))}
-                          </div>
-                        ) : (
-                          <Input
-                            value={ollamaModel}
-                            onChange={(e) => setOllamaModel(e.target.value)}
-                            placeholder="llama3.1:8b, mistral, phi3…"
-                            className="h-8 bg-transparent border-[var(--aria-border)] text-aria-text2 placeholder:text-aria-text4 text-[12px] focus-visible:ring-aria-accent rounded-[6px]"
-                          />
-                        )}
-                        {ollamaModels.length === 0 && (
-                          <p className="text-[10px] text-aria-text4">Click Test Connection to see available models</p>
-                        )}
-                      </div>
-
-                      {/* Actions */}
-                      <div className="flex items-center gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-[11px] h-7 border-[var(--aria-border)] bg-transparent text-aria-text2 hover:bg-[rgba(255,255,255,0.03)] rounded-[6px]"
-                          onClick={testOllama}
-                        >
-                          {verifyStatus["ollama"] === "loading"
-                            ? <><Loader2 size={11} className="animate-spin mr-1" />Testing…</>
-                            : "Test Connection"
-                          }
-                        </Button>
-                        <Button
-                          size="sm"
-                          className="text-[11px] h-7 bg-aria-accent/[0.12] text-aria-accent border border-aria-accent/20 hover:bg-aria-accent/20 rounded-[6px]"
-                          onClick={() => {
-                            setLocalLLMEnabled(true);
-                            setCredValue("LLM_PROVIDER", "ollama");
-                            setCredValue("OLLAMA_BASE_URL", ollamaUrl);
-                            setCredValue("OLLAMA_MODEL", ollamaModel);
-                            toast.info("Ollama set as active LLM — click Save");
-                          }}
-                        >
-                          {llmStatus?.provider === "ollama" ? "Active ✓" : "Set Active"}
-                        </Button>
-                        {verifyStatus["ollama"] === "ok" && (
-                          <span className="text-[11px] text-aria-success">Connected ✓ {ollamaModels.length} models</span>
-                        )}
-                        {verifyStatus["ollama"] === "fail" && (
-                          <span className="text-[11px] text-red-400">Not reachable</span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </GlassCard>
               </motion.div>
             )}
 
@@ -612,6 +478,19 @@ export default function Settings() {
                       </div>
                     </div>
                   )}
+                </GlassCard>
+              </motion.div>
+            )}
+
+            {/* ── Security ───────────────────────────────────────────────── */}
+            {activeSection === "security" && (
+              <motion.div className="space-y-4 max-w-xl">
+                <GlassCard className="p-5 space-y-4">
+                  <div><p className="text-[13px] font-semibold text-aria-text1">Change password</p><p className="mt-1 text-[11px] text-aria-text4">Changing your password signs you out of every active ARIA session.</p></div>
+                  <div className="space-y-1.5"><Label htmlFor="current-password">Current password</Label><Input id="current-password" type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /></div>
+                  <div className="space-y-1.5"><Label htmlFor="new-password">New password</Label><Input id="new-password" type="password" autoComplete="new-password" minLength={12} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /><p className="text-[10px] text-aria-text4">Use at least 12 characters.</p></div>
+                  <div className="space-y-1.5"><Label htmlFor="confirm-password">Confirm new password</Label><Input id="confirm-password" type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /></div>
+                  <Button onClick={changePassword} disabled={changingPassword || !currentPassword || !newPassword || !confirmPassword}>{changingPassword ? "Changing password..." : "Change password"}</Button>
                 </GlassCard>
               </motion.div>
             )}

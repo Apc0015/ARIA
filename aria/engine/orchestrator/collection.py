@@ -115,6 +115,12 @@ class CollectorDispatcher:
         entry = _COLLECTOR_REGISTRY.get(source_name)
         if not entry:
             self._log.debug("Unknown source: %s", source_name)
+            await self._emit(
+                "source_failed",
+                f"Unknown source: {source_name}",
+                source=source_name,
+                error="Source is not registered",
+            )
             return []
         module_path, class_name, max_q, label = entry
         import importlib
@@ -123,6 +129,12 @@ class CollectorDispatcher:
             cls = getattr(mod, class_name)
         except Exception as exc:
             self._log.debug("Cannot import %s.%s: %s", module_path, class_name, exc)
+            await self._emit(
+                "source_failed",
+                f"{label} could not start",
+                source=source_name,
+                error="Collector could not be loaded",
+            )
             return []
 
         kwargs = ctor_kwargs or {}
@@ -134,6 +146,7 @@ class CollectorDispatcher:
 
         effective_queries = queries[:max_q] if max_q else queries
         docs: list[dict] = []
+        await self._emit("source_started", f"Starting {label}", source=source_name)
         try:
             async for doc in collector.collect(effective_queries):
                 docs.append(doc)
@@ -141,7 +154,15 @@ class CollectorDispatcher:
                     break
         except Exception as exc:
             self._log.warning("%s collector error: %s", label, exc)
-        await self._emit("source_done", f"{label}: {len(docs)} docs")
+            await self._emit(
+                "source_failed",
+                f"{label} failed after collecting {len(docs)} documents",
+                source=source_name,
+                count=len(docs),
+                error=str(exc),
+            )
+            return docs
+        await self._emit("source_done", f"{label}: {len(docs)} docs", source=source_name, count=len(docs))
         return docs
 
     async def dispatch(
@@ -177,6 +198,7 @@ class CollectorDispatcher:
             max_items=max_per_source,
         )
         docs: list[dict] = []
+        await self._emit("source_started", "Starting Zotero", source="zotero")
         try:
             async for doc in collector.collect(queries[:3]):
                 docs.append(doc)
@@ -184,17 +206,26 @@ class CollectorDispatcher:
                     break
         except Exception as exc:
             self._log.warning("Zotero collector error: %s", exc)
-        await self._emit("source_done", f"Zotero: {len(docs)} docs ({mode})")
+            await self._emit("source_failed", "Zotero failed", source="zotero", count=len(docs), error=str(exc))
+            return docs
+        await self._emit("source_done", f"Zotero: {len(docs)} docs ({mode})", source="zotero", count=len(docs))
         return docs
 
     async def _collect_academic_platforms(self, queries: list[str], max_per_source: int) -> list[dict]:
         from aria.engine.collectors.academic.core_platforms import AcademicPlatformsCollector
         collector = AcademicPlatformsCollector(max_results=max_per_source)
+        await self._emit("source_started", "Starting Academic Platforms", source="academic_platforms")
         if not await collector.validate():
             self._log.info(
                 "AcademicPlatforms: no credentials set, skipping "
                 "(set IEEE_API_KEY, ELSEVIER_API_KEY, SPRINGER_API_KEY, "
                 "JSTOR_SESSION_COOKIE, or ACM_SESSION_COOKIE)"
+            )
+            await self._emit(
+                "source_failed",
+                "Academic Platforms needs configured credentials",
+                source="academic_platforms",
+                error="Required credentials are not configured",
             )
             return []
         docs: list[dict] = []
@@ -205,7 +236,9 @@ class CollectorDispatcher:
                     break
         except Exception as exc:
             self._log.warning("AcademicPlatforms collector error: %s", exc)
-        await self._emit("source_done", f"AcademicPlatforms: {len(docs)} docs")
+            await self._emit("source_failed", "Academic Platforms failed", source="academic_platforms", count=len(docs), error=str(exc))
+            return docs
+        await self._emit("source_done", f"AcademicPlatforms: {len(docs)} docs", source="academic_platforms", count=len(docs))
         return docs
 
 

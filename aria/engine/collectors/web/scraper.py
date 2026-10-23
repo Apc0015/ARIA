@@ -87,7 +87,9 @@ class WebScraperCollector(BaseCollector):
             Document dicts with source_type='web_page'.
         """
         for url in queries:
-            if not url.startswith(("http://", "https://")):
+            from aria.utils.url import is_safe_public_http_url
+
+            if not is_safe_public_http_url(url):
                 continue
             try:
                 doc = await self.scrape_url(url)
@@ -111,7 +113,11 @@ class WebScraperCollector(BaseCollector):
             Document dict, or None on failure.
         """
         from aria.utils.robots import allowed_async
+        from aria.utils.url import is_safe_public_http_destination
 
+        if not await is_safe_public_http_destination(url):
+            logger.warning("WebScraperCollector: blocked unsafe URL %s", url)
+            return None
         if not await allowed_async(url):
             return None
 
@@ -152,7 +158,7 @@ class WebScraperCollector(BaseCollector):
     async def _scrape_plain(self, url: str, domain: str) -> Optional[dict[str, Any]]:
         """Fetch via plain aiohttp."""
         try:
-            connector = aiohttp.TCPConnector(ssl=False)
+            connector = aiohttp.TCPConnector()
             async with aiohttp.ClientSession(
                 headers=_HEADERS,
                 connector=connector,
@@ -332,4 +338,3 @@ def _extract_text(html: str) -> tuple[str, str]:
     text = re.sub(r"[ \t]+", " ", text)
 
     return text.strip(), title
-

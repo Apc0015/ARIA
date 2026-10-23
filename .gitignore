@@ -38,6 +38,8 @@ data/vectors/*
 !data/vectors/.gitkeep
 data/logs/*
 !data/logs/.gitkeep
+data/aria_saas.db
+data/aria_saas.db-*
 
 # Generated audit reports at repo root
 /*.docx

@@ -65,7 +65,7 @@ _SKIP_PATH_SEGMENTS = frozenset({
 
 def _extract_links(doc: dict[str, Any], max_candidates: int = 10) -> list[str]:
     """Pull outbound URLs from a doc's full-page Markdown text."""
-    from aria.utils.url import get_url_domain, normalize_url
+    from aria.utils.url import get_url_domain, is_safe_public_http_url, normalize_url
 
     text = doc.get("text", "") or ""
     src  = doc.get("url", "") or ""
@@ -91,6 +91,8 @@ def _extract_links(doc: dict[str, Any], max_candidates: int = 10) -> list[str]:
         url = url.rstrip(".,;)")
         # Must be absolute
         if not url.startswith(("http://", "https://")):
+            continue
+        if not is_safe_public_http_url(url):
             continue
         url_no_frag = normalize_url(url)
         if not url_no_frag:

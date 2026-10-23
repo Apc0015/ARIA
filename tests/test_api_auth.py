@@ -6,6 +6,8 @@ fail-closed auth, spoof-proof rate-limit identity, and bounded memory.
 
 from __future__ import annotations
 
+from collections import OrderedDict
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -128,3 +130,13 @@ def test_rate_windows_are_lru_capped(monkeypatch):
     for i in range(1000):
         rl._window(windows, f"10.0.{i // 256}.{i % 256}")
     assert len(windows) <= 100  # unbounded per-client dict was a memory DoS
+
+
+def test_login_attempts_have_a_dedicated_bounded_window(monkeypatch):
+    from aria.api.middleware import rate_limit as rl
+
+    monkeypatch.setattr(rl, "_MAX_TRACKED", 3)
+    windows = OrderedDict()
+    for index in range(10):
+        rl._window(windows, f"198.51.100.{index}")
+    assert len(windows) == 3

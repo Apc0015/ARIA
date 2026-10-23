@@ -59,6 +59,20 @@ def _env_guard():
     os.environ.update(snapshot)
 
 
+@pytest.fixture(autouse=True)
+def _rate_limit_guard():
+    """Keep API test clients independent without weakening production limits."""
+    from aria.api.middleware import rate_limit
+
+    rate_limit._run_windows.clear()
+    rate_limit._req_windows.clear()
+    rate_limit._login_windows.clear()
+    yield
+    rate_limit._run_windows.clear()
+    rate_limit._req_windows.clear()
+    rate_limit._login_windows.clear()
+
+
 @pytest.fixture
 def temp_output_root() -> Path:
     with tempfile.TemporaryDirectory() as tmp:

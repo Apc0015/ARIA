@@ -1,17 +1,14 @@
-import { useState } from "react";
-
-const STORAGE_KEY = "aria-enabled-sources";
-
-function getStored(): Record<string, boolean> {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
-  } catch {
-    return {};
-  }
-}
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api } from "@/lib/api";
 
 export function useEnabledSources() {
-  const [overrides, setOverrides] = useState<Record<string, boolean>>(getStored);
+  const client = useQueryClient();
+  const settings = useQuery({ queryKey: ["source-settings"], queryFn: api.sourceSettings.get });
+  const save = useMutation({
+    mutationFn: api.sourceSettings.save,
+    onSuccess: (data) => client.setQueryData(["source-settings"], data),
+  });
+  const overrides = settings.data?.enabled_sources ?? {};
 
   /** Whether a source is active. Falls back to `defaultVal` if user never touched it. */
   function isEnabled(id: string, defaultVal: boolean): boolean {
@@ -20,13 +17,9 @@ export function useEnabledSources() {
 
   /** Flip the toggle for a source. */
   function toggle(id: string, defaultVal: boolean) {
-    setOverrides((prev) => {
-      const current = id in prev ? prev[id] : defaultVal;
-      const next = { ...prev, [id]: !current };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      return next;
-    });
+    const current = id in overrides ? overrides[id] : defaultVal;
+    save.mutate({ ...overrides, [id]: !current });
   }
 
-  return { isEnabled, toggle };
+  return { isEnabled, toggle, isLoading: settings.isLoading, error: settings.error };
 }

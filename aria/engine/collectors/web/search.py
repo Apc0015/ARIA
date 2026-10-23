@@ -174,7 +174,11 @@ async def _scrape(stub: dict, sem: asyncio.Semaphore) -> dict:
     snip_len = len(stub.get("text", ""))
 
     from aria.utils.robots import allowed_async
+    from aria.utils.url import is_safe_public_http_destination
 
+    if not await is_safe_public_http_destination(url):
+        logger.warning("WebSearchCollector: blocked unsafe result URL %s", url)
+        return stub
     if not await allowed_async(url):
         return stub  # keep the search snippet; skip full-page fetch
 

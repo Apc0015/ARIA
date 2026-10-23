@@ -27,8 +27,6 @@ STATIC_MODEL_CATALOG: dict[str, list[str]] = {
         "mistralai/mixtral-8x7b",
     ],
     "ollama": ["llama3.1:8b", "mistral:latest"],
-    "gemini": ["gemini-2.0-flash", "gemini-2.5-pro"],
-    "cohere": ["command-r-plus", "command-r"],
 }
 
 
@@ -95,26 +93,21 @@ def build_provider_catalog(config: Any) -> list[dict]:
             },
         ])
 
-    # Ollama (local, always try)
-    ollama_base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-    catalog.extend([
-        {
-            "provider": "ollama",
-            "model_id": "llama3.1:8b",
-            "enabled": True,
-            "base_url": ollama_base,
-            "api_key": "ollama",
-            "notes": "Local Ollama / Llama 3.1 8B",
-        },
-        {
-            "provider": "ollama",
-            "model_id": "mistral",
-            "enabled": True,
-            "base_url": ollama_base,
-            "api_key": "ollama",
-            "notes": "Local Ollama / Mistral 7B",
-        },
-    ])
+    # A local model is not available merely because ARIA knows its name. Only
+    # advertise it after an operator has configured an explicit endpoint; the
+    # status route performs the final connectivity and installed-model check.
+    ollama_base = os.getenv("OLLAMA_BASE_URL")
+    if ollama_base:
+        catalog.extend([
+            {
+                "provider": "ollama",
+                "model_id": os.getenv("OLLAMA_MODEL", "llama3.1:8b"),
+                "enabled": False,
+                "base_url": ollama_base,
+                "api_key": "",
+                "notes": "Configured Ollama endpoint; verify connectivity before use",
+            },
+        ])
 
     return catalog
 

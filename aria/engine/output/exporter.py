@@ -11,7 +11,7 @@ from typing import Any
 
 
 class Exporter:
-    """Exports document collections to JSON, CSV, Markdown, and ZIP formats."""
+    """Exports document collections to JSON, CSV, Markdown, HTML, and ZIP formats."""
 
     def __init__(self, output_dir: Path) -> None:
         self._output_dir = Path(output_dir)
@@ -219,6 +219,9 @@ class Exporter:
         clean_docs: list[dict],
         formats: list[str],
         topic: str = "",
+        *,
+        include_clean_exports: bool = True,
+        digest_documents: list[dict] | None = None,
     ) -> dict[str, str]:
         """Export documents in all requested formats.
 
@@ -226,6 +229,8 @@ class Exporter:
             raw_docs: Raw collected documents.
             clean_docs: Cleaned documents.
             formats: List of format names (json, csv, markdown, zip).
+            include_clean_exports: Whether the run produced AI-cleaned records.
+            digest_documents: Records used for the human-readable digest.
             topic: Research topic string.
 
         Returns:
@@ -235,19 +240,24 @@ class Exporter:
 
         if "json" in formats:
             raw_path = self.export_raw_json(raw_docs)
-            clean_path = self.export_clean_json(clean_docs)
             paths["raw_json"] = str(raw_path)
-            paths["clean_json"] = str(clean_path)
+            if include_clean_exports:
+                clean_path = self.export_clean_json(clean_docs)
+                paths["clean_json"] = str(clean_path)
 
         if "csv" in formats:
             raw_csv_path = self.export_raw_csv(raw_docs)
-            clean_csv_path = self.export_clean_csv(clean_docs)
             paths["raw_csv"] = str(raw_csv_path)
-            paths["csv"] = str(clean_csv_path)      # legacy key kept for compat
-            paths["clean_csv"] = str(clean_csv_path)
+            if include_clean_exports:
+                clean_csv_path = self.export_clean_csv(clean_docs)
+                paths["csv"] = str(clean_csv_path)      # legacy key kept for compat
+                paths["clean_csv"] = str(clean_csv_path)
 
         if "markdown" in formats:
-            md_path = self.export_markdown(clean_docs, topic=topic)
+            md_path = self.export_markdown(
+                digest_documents if digest_documents is not None else clean_docs,
+                topic=topic,
+            )
             paths["markdown"] = str(md_path)
 
         if "zip" in formats:

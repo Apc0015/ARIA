@@ -7,25 +7,28 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, Request
 
+from aria.api.authorization import current_user, require_role
+from aria.api.run_manager import RunManager
 from aria.types.credentials import scoped_environ
 from aria.utils.scrub import scrub_secrets
 
 router = APIRouter()
 
 
-def _brain_overrides(request: Request) -> dict | None:
-    """User-selected cleaning brain, when the real backend is active."""
-    run_manager = getattr(request.app.state, "run_manager", None)
-    return getattr(run_manager, "_brain_config", None) if run_manager else None
+def _tenant_brain_overrides(request: Request) -> dict[str, str]:
+    """Resolve AI configuration from the authenticated tenant only."""
+    run_manager: RunManager = request.app.state.run_manager
+    return run_manager.get_tenant_llm_overrides(current_user(request)["tenant_id"])
 
 
 @router.post("/api/credentials/verify")
-async def verify_credential(payload: dict[str, Any]):
+async def verify_credential(payload: dict[str, Any], request: Request):
     """Test whether credentials for a source are valid.
 
     Body: { source_id: str, credentials: { ENV_KEY: value, ... } }
     Returns: { ok: bool, message: str }
     """
+    require_role(request, "admin", "member")
     source_id = (payload.get("source_id") or "").strip()
     creds = {k: v for k, v in (payload.get("credentials") or {}).items() if v}
 
@@ -63,8 +66,18 @@ async def llm_status(request: Request):
     try:
         from aria.engine.ensemble.providers import resolve_cleaning_llm
 
+        overrides = _tenant_brain_overrides(request)
+        if not overrides.get("provider"):
+            return {
+                "provider": "none",
+                "model": "",
+                "base_url": "",
+                "configured": False,
+                "connected": False,
+                "message": "No LLM connected. Connect an AI model in Settings.",
+            }
         provider, model_id, base_url, api_key = resolve_cleaning_llm(
-            None, overrides=_brain_overrides(request)
+            None, overrides=overrides
         )
         base_url = base_url or ""
 

@@ -76,6 +76,11 @@ _ENV_FIELD_MAP = {env: attr for attr, env in _FIELD_ENV_MAP.items()}
 _ENV_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 
+def credential_environment_keys() -> frozenset[str]:
+    """Return environment keys that ARIA recognizes as connector secrets."""
+    return frozenset(_ENV_FIELD_MAP)
+
+
 class _EnvRWLock:
     """Async readers-writer lock guarding os.environ overlays.
 
@@ -216,13 +221,14 @@ class CredentialScope:
         return cls._from_env_dict(env)
 
     @classmethod
-    def from_dict(cls, d: dict) -> "CredentialScope":
+    def from_dict(cls, d: dict, *, include_process_env: bool = True) -> "CredentialScope":
         """Build from a credentials dict (e.g. loaded from credentials.json).
 
-        Keys from the dict override matching env vars; everything else falls
-        back to recognized current environment credentials.
+        Keys from the dict override matching env vars. API-managed SaaS runs
+        pass ``include_process_env=False`` so deployment credentials cannot
+        become unannounced tenant credentials.
         """
-        env = CredentialScope.from_env().to_env()
+        env = CredentialScope.from_env().to_env() if include_process_env else {}
         env.update(_flatten_credentials(d))
         return cls._from_env_dict(env)
 
@@ -242,12 +248,15 @@ class CredentialScope:
         return self.to_env().get(env_name, "")
 
 
-def _is_noop(overrides: dict[str, str]) -> bool:
-    return all(os.environ.get(k) == v for k, v in overrides.items())
+def _is_noop(overrides: dict[str, str], removals: set[str] | None = None) -> bool:
+    return (
+        all(os.environ.get(k) == v for k, v in overrides.items())
+        and all(key not in os.environ for key in (removals or set()))
+    )
 
 
 @contextlib.asynccontextmanager
-async def scoped_environ(overrides: dict[str, str]):
+async def scoped_environ(overrides: dict[str, str], *, unset: set[str] | None = None):
     """Temporarily apply env overrides, serializing only when necessary.
 
     The overlay for most runs equals the process environment (credentials come
@@ -260,13 +269,14 @@ async def scoped_environ(overrides: dict[str, str]):
     of serializing every run behind a single process-wide lock.
     """
     clean = {k: str(v) for k, v in overrides.items() if k and v}
+    removals = {key for key in (unset or set()) if key and key not in clean}
 
-    if _is_noop(clean):
+    if _is_noop(clean, removals):
         await _ENV_LOCK.acquire_read()
         try:
             # Recheck under the read slot: while we hold it no writer can be
             # active, so the environment is authoritative base state.
-            if _is_noop(clean):
+            if _is_noop(clean, removals):
                 yield
                 return
         finally:
@@ -275,9 +285,13 @@ async def scoped_environ(overrides: dict[str, str]):
         # to the writer path. (release_read above already ran.)
 
     async with _ENV_LOCK.writer():
-        old: dict[str, str | None] = {k: os.environ.get(k) for k in clean}
+        old: dict[str, str | None] = {
+            key: os.environ.get(key) for key in clean.keys() | removals
+        }
         try:
             os.environ.update(clean)
+            for key in removals:
+                os.environ.pop(key, None)
             yield
         finally:
             for key, previous in old.items():

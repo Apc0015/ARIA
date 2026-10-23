@@ -14,9 +14,15 @@ class SharedMemory:
     across multiple parallel collectors.
     """
 
-    def __init__(self, backend: str = "dict", redis_url: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        backend: str = "dict",
+        redis_url: Optional[str] = None,
+        namespace: str = "aria",
+    ) -> None:
         self._backend = backend
         self._redis_url = redis_url
+        self._namespace = namespace.strip(":") or "aria"
         self._store: dict[str, Any] = {}
         self._seen_urls: set[str] = set()
         self._seen_fingerprints: set[str] = set()
@@ -25,6 +31,14 @@ class SharedMemory:
 
         if backend == "redis" and redis_url:
             self._init_redis(redis_url)
+
+    @property
+    def _url_key(self) -> str:
+        return f"{self._namespace}:seen_urls"
+
+    @property
+    def _fingerprint_key(self) -> str:
+        return f"{self._namespace}:seen_fingerprints"
 
     def _init_redis(self, redis_url: str) -> None:
         try:
@@ -74,7 +88,7 @@ class SharedMemory:
         url_hash = hashlib.sha256(normalized.encode()).hexdigest()
 
         if self._redis:
-            added = self._redis.sadd("aria:seen_urls", url_hash)
+            added = self._redis.sadd(self._url_key, url_hash)
             return bool(added)
 
         with self._lock:
@@ -93,7 +107,7 @@ class SharedMemory:
             True if the fingerprint is new, False if already seen.
         """
         if self._redis:
-            added = self._redis.sadd("aria:seen_fingerprints", fp)
+            added = self._redis.sadd(self._fingerprint_key, fp)
             return bool(added)
 
         with self._lock:
@@ -109,4 +123,4 @@ class SharedMemory:
             self._seen_urls.clear()
             self._seen_fingerprints.clear()
         if self._redis:
-            self._redis.delete("aria:seen_urls", "aria:seen_fingerprints")
+            self._redis.delete(self._url_key, self._fingerprint_key)

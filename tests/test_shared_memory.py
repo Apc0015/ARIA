@@ -96,3 +96,28 @@ def test_redis_backend_falls_back_to_dict_when_unavailable():
     assert mem._backend == "dict"
     assert mem._redis is None
     assert mem.add_url("https://example.com") is True
+
+
+def test_redis_keys_are_isolated_by_namespace():
+    class FakeRedis:
+        def __init__(self):
+            self.values = {}
+
+        def sadd(self, key, value):
+            bucket = self.values.setdefault(key, set())
+            before = len(bucket)
+            bucket.add(value)
+            return len(bucket) - before
+
+        def delete(self, *keys):
+            for key in keys:
+                self.values.pop(key, None)
+
+    redis = FakeRedis()
+    first = SharedMemory(namespace="aria:run:first")
+    second = SharedMemory(namespace="aria:run:second")
+    first._redis = redis
+    second._redis = redis
+    assert first.add_url("https://example.com") is True
+    assert second.add_url("https://example.com") is True
+    assert set(redis.values) == {"aria:run:first:seen_urls", "aria:run:second:seen_urls"}

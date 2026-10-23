@@ -11,6 +11,9 @@ const statusConfig: Record<RunStatus, { color: string; glow: string; animate: bo
   running: { color: "bg-aria-accent", glow: "status-glow-violet", animate: true },
   pending: { color: "bg-aria-text4", glow: "", animate: false },
   completed: { color: "bg-aria-success", glow: "status-glow-green", animate: false },
+  completed_with_failures: { color: "bg-amber-400", glow: "", animate: false },
+  collection_completed: { color: "bg-sky-400", glow: "", animate: false },
+  interrupted: { color: "bg-amber-400", glow: "", animate: false },
   failed: { color: "bg-red-500", glow: "", animate: false },
   cancelled: { color: "bg-aria-text4", glow: "", animate: false },
 };

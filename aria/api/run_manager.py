@@ -16,7 +16,7 @@ from aria.access.credentials import CredentialManager
 from aria.config import load_config
 from aria.mission import load_mission_text
 from aria.engine.orchestrator import MasterOrchestrator, RunResult
-from aria.types.credentials import CredentialScope, scoped_environ
+from aria.types.credentials import CredentialScope, credential_environment_keys, scoped_environ
 from aria.utils.logger import configure_logging
 from aria.engine.ensemble.providers import build_provider_catalog, default_llm_source_models, describe_cleaning_brain
 
@@ -24,6 +24,26 @@ _logger = logging.getLogger("aria")
 
 _MAX_CONCURRENT_RUNS = int(os.environ.get("ARIA_MAX_CONCURRENT_RUNS", "20"))
 _RUN_STATE_FILE = "run_state.json"
+_LLM_ENV_KEYS = {
+    "LLM_PROVIDER",
+    "OLLAMA_BASE_URL",
+    "OLLAMA_MODEL",
+    "OPENAI_API_KEY",
+    "OPENAI_MODEL",
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_MODEL",
+    "OPENROUTER_API_KEY",
+    "OPENROUTER_MODEL",
+}
+_SAAS_CREDENTIAL_KEYS = credential_environment_keys() | {
+    "LLM_PROVIDER",
+    "ANTHROPIC_MODEL",
+    "OPENAI_MODEL",
+    "OPENROUTER_MODEL",
+    "LLM_ENSEMBLE_ENABLED",
+    "LLM_ENSEMBLE_MODELS",
+    "LLM_ENSEMBLE_STRATEGY",
+}
 
 from aria.utils.scrub import scrub_secrets as _scrub_secrets
 
@@ -49,6 +69,22 @@ def clean_topic(topic: str | None, run_id: str) -> str | None:
     if not _re.search(r"[A-Za-z]{3,}", t):  # must contain at least one word
         return None
     return t
+
+
+def run_progress(state: "RunState") -> int:
+    """Return the same honest stage-based progress on every API surface."""
+    docs_collected = state.docs_collected or state.stats.get("collected", 0)
+    if state.status in {"completed", "completed_with_failures", "collection_completed", "failed", "cancelled"}:
+        return 100
+    if state.stage in {"export", "report", "export_done"}:
+        return 90
+    if state.stage in {"knowledge_graph", "images", "kb_save", "score"}:
+        return 80
+    if state.stage in {"cleaning", "clean_progress", "clean_done"}:
+        return 65
+    if docs_collected:
+        return 40
+    return 10 if state.status == "running" else 0
 
 
 @dataclass
@@ -79,6 +115,15 @@ class RunState:
     gap_analysis: dict[str, Any] = field(default_factory=dict)
     images: list[dict[str, Any]] = field(default_factory=list)
     query_plan: dict[str, Any] = field(default_factory=dict)
+    source_status: dict[str, dict[str, Any]] = field(default_factory=dict)
+    failures: list[dict[str, Any]] = field(default_factory=list)
+    workflow: str = "full_research"
+    tenant_id: str = ""
+    user_id: str = ""
+    approved_findings: list[dict[str, Any]] = field(default_factory=list)
+    # Non-secret run behavior contract, required to safely restart interrupted
+    # work without changing collection-only/full-research semantics.
+    flags: dict[str, Any] = field(default_factory=dict)
 
 
 class RunManager:
@@ -88,7 +133,6 @@ class RunManager:
         self.base_settings = load_config()
         self.runs: dict[str, RunState] = {}
         self._lock = asyncio.Lock()
-        self._brain_config: dict | None = None
         self._tasks: set[asyncio.Task] = set()
         # Limit simultaneous heavy research tasks
         self._run_semaphore = asyncio.Semaphore(
@@ -109,8 +153,13 @@ class RunManager:
             return "***"
         return value[:4] + "*" * (len(value) - 8) + value[-4:]
 
-    def get_credentials(self) -> dict[str, Any]:
-        manager = CredentialManager(self.base_settings.credentials_file)
+    def _credentials_file_for_tenant(self, tenant_id: str) -> Path:
+        if not tenant_id:
+            raise ValueError("Tenant ID is required for customer credentials.")
+        return self.base_settings.credentials_file.parent / "tenants" / tenant_id / "credentials.json"
+
+    def get_credentials(self, tenant_id: str) -> dict[str, Any]:
+        manager = CredentialManager(self._credentials_file_for_tenant(tenant_id))
         raw = manager.credentials
         masked = {
             k: self._mask(v) if isinstance(v, str) and v else v
@@ -118,21 +167,90 @@ class RunManager:
         }
         return {"platforms": masked}
 
-    def save_credentials(self, credentials_payload: dict[str, Any]) -> Path:
+    def save_credentials(self, tenant_id: str, credentials_payload: dict[str, Any]) -> Path:
+        if os.getenv("ARIA_SAAS_MODE", "true").lower() in {"true", "1", "yes"} and not os.getenv("ARIA_CREDENTIALS_KEY"):
+            raise ValueError("ARIA_CREDENTIALS_KEY must be configured before storing customer credentials.")
+        credentials = credentials_payload.get("platforms", credentials_payload)
+        if not isinstance(credentials, dict):
+            raise ValueError("Credentials must be an object.")
+        self._validate_tenant_credentials(credentials)
+        # Settings submits only fields changed in the active section. Merge
+        # with this tenant's existing encrypted values so changing one source
+        # cannot silently erase every other connection.
+        existing = self._load_saved_credentials(tenant_id)
+        if self._managed_saas():
+            # Drop legacy arbitrary environment fields rather than carrying
+            # them into the next tenant-controlled research process.
+            existing = {
+                key: value
+                for key, value in existing.items()
+                if str(key).upper() in _SAAS_CREDENTIAL_KEYS
+            }
+        credentials = {**existing, **credentials}
+        self._validate_tenant_credentials(credentials)
         manager = CredentialManager()
-        manager.credentials = credentials_payload.get("platforms", credentials_payload)
-        return manager.save(self.base_settings.credentials_file)
+        manager.credentials = credentials
+        return manager.save(self._credentials_file_for_tenant(tenant_id))
 
-    def _load_saved_credentials(self) -> dict[str, Any]:
-        manager = CredentialManager(self.base_settings.credentials_file)
-        return manager.credentials
+    def _load_saved_credentials(self, tenant_id: str) -> dict[str, Any]:
+        manager = CredentialManager(self._credentials_file_for_tenant(tenant_id))
+        credentials = manager.credentials
+        if self._managed_saas():
+            return {
+                key: value
+                for key, value in credentials.items()
+                if str(key).upper() in _SAAS_CREDENTIAL_KEYS
+            }
+        return credentials
 
-    def _build_credential_scope(self, payload: dict[str, Any]) -> CredentialScope:
+    @staticmethod
+    def _managed_saas() -> bool:
+        return os.getenv("ARIA_SAAS_MODE", "true").lower() in {"true", "1", "yes"}
+
+    def _validate_tenant_credentials(self, credentials: dict[str, Any]) -> None:
+        """Prevent tenant settings from turning the API into an SSRF proxy."""
+        if self._managed_saas() and any(
+            key in credentials and credentials[key]
+            for key in ("OLLAMA_BASE_URL", "OLLAMA_MODEL")
+        ):
+            raise ValueError(
+                "Local Ollama connections are not available in managed ARIA. "
+                "Connect a supported cloud AI provider instead."
+            )
+        if self._managed_saas():
+            unknown = sorted(
+                str(key)
+                for key in credentials
+                if str(key).upper() not in _SAAS_CREDENTIAL_KEYS
+            )
+            if unknown:
+                raise ValueError(
+                    "Unsupported credential field(s): " + ", ".join(unknown[:5])
+                )
+
+    def get_tenant_llm_overrides(self, tenant_id: str) -> dict[str, str]:
+        """Translate a tenant's saved credential fields into LLM resolver input."""
+        credentials = self._load_saved_credentials(tenant_id)
+        provider = str(credentials.get("LLM_PROVIDER") or "").strip().lower()
+        if not provider or (self._managed_saas() and provider == "ollama"):
+            return {}
+        prefix = provider.upper()
+        return {
+            "provider": provider,
+            "model": str(credentials.get(f"{prefix}_MODEL") or "").strip(),
+            "api_key": str(credentials.get(f"{prefix}_API_KEY") or "").strip(),
+            "base_url": str(credentials.get("OLLAMA_BASE_URL") or "").strip(),
+        }
+
+    def _build_credential_scope(self, payload: dict[str, Any], tenant_id: str) -> CredentialScope:
         """Merge env, saved UI credentials, and launch overrides for one run."""
-        env: dict[str, str] = CredentialScope.from_env().to_env()
+        # A managed customer run starts from no deployment credentials at all.
+        # Source tokens are as sensitive and tenant-specific as AI keys; only
+        # saved tenant connections and validated launch credentials may enter.
+        env: dict[str, str] = {} if self._managed_saas() else CredentialScope.from_env().to_env()
 
         credential_sources: list[dict[str, Any]] = []
-        saved = self._load_saved_credentials()
+        saved = self._load_saved_credentials(tenant_id)
         if saved:
             credential_sources.append(saved)
         if payload.get("credentials"):
@@ -151,9 +269,33 @@ class RunManager:
             )
 
         for source in credential_sources:
-            env.update(CredentialScope.from_dict(source).to_env())
+            env.update(
+                CredentialScope.from_dict(
+                    source,
+                    include_process_env=not self._managed_saas(),
+                ).to_env()
+            )
 
-        for provider_cfg in (self._brain_config or {}, payload.get("provider") or {}):
+        if self._managed_saas():
+            # Quarantine legacy local-model settings saved before managed SaaS
+            # enforcement was introduced. They must not alter a customer run.
+            for key in ("OLLAMA_BASE_URL", "OLLAMA_MODEL"):
+                env.pop(key, None)
+            if env.get("LLM_PROVIDER", "").lower() == "ollama":
+                env.pop("LLM_PROVIDER", None)
+
+        launch_provider = payload.get("provider") or {}
+        if not isinstance(launch_provider, dict):
+            raise ValueError("Provider configuration must be an object.")
+        if self._managed_saas() and (
+            str(launch_provider.get("provider") or "").lower() == "ollama"
+            or launch_provider.get("base_url")
+        ):
+            raise ValueError(
+                "Local Ollama connections are not available in managed ARIA. "
+                "Connect a supported cloud AI provider instead."
+            )
+        for provider_cfg in (launch_provider,):
             provider = (provider_cfg.get("provider") or "").strip()
             model = (provider_cfg.get("model") or provider_cfg.get("model_id") or "").strip()
             api_key = (provider_cfg.get("api_key") or "").strip()
@@ -168,7 +310,11 @@ class RunManager:
             if base_url:
                 env["OLLAMA_BASE_URL"] = base_url
 
-        return CredentialScope.from_dict(env)
+        # ``CredentialScope.from_dict`` deliberately inherits the process
+        # environment for legacy CLI callers. The API has already assembled a
+        # tenant-specific environment above, so inheriting again would leak
+        # deployment-level AI keys into a customer run.
+        return CredentialScope._from_env_dict(env)
 
     def _state_path(self, state: RunState) -> Path:
         return Path(state.output_dir) / _RUN_STATE_FILE
@@ -188,7 +334,7 @@ class RunManager:
         if not runs_dir.exists():
             return
         for run_dir in sorted(
-            (p for p in runs_dir.iterdir() if p.is_dir()),
+            (path.parent for path in runs_dir.rglob(_RUN_STATE_FILE)),
             key=lambda p: p.stat().st_mtime,
             reverse=True,
         ):
@@ -196,10 +342,10 @@ class RunManager:
             if not state:
                 continue
             if state.status in {"queued", "pending", "running"}:
-                state.status = "failed"
+                state.status = "interrupted"
                 state.stage = "interrupted"
                 state.message = "Run interrupted by API restart"
-                state.error = state.error or "API restarted before this run completed."
+                state.error = state.error or "API restarted before this run completed. Restart this run to continue."
                 state.updated_at = datetime.now(timezone.utc).isoformat()
                 self._persist_state(state)
             self.runs[state.run_id] = state
@@ -336,23 +482,6 @@ class RunManager:
     def validate_mission(self, mission_yaml: str) -> dict[str, Any]:
         return load_mission_text(mission_yaml)
 
-    def set_brain_config(self, config: dict) -> None:
-        """Store user's cleaning brain selection: {provider, model_id, api_key, base_url}.
-
-        Deliberately does NOT touch os.environ: the selection is merged into
-        each run's CredentialScope (see _build_credential_scope) and passed as
-        overrides to resolve_cleaning_llm(), so one caller's key never becomes
-        the process-wide default for other callers.
-        """
-        self._brain_config = config
-
-    def get_brain_config(self) -> dict:
-        """Return current brain config (user-set or auto-detected from env)."""
-        from aria.engine.ensemble.providers import describe_cleaning_brain
-        if self._brain_config:
-            return {**self._brain_config, "user_configured": True}
-        return {**describe_cleaning_brain(self.base_settings), "user_configured": False}
-
     def get_llm_sources(self) -> dict[str, Any]:
         return {
             "providers": build_provider_catalog(self.base_settings),
@@ -360,7 +489,7 @@ class RunManager:
             "cleaning_brain": describe_cleaning_brain(self.base_settings),
         }
 
-    async def start_run(self, payload: dict[str, Any]) -> RunState:
+    async def start_run(self, payload: dict[str, Any], *, tenant_id: str = "", user_id: str = "") -> RunState:
         # Advisory capacity check — not atomic, but provides fast UX feedback.
         # True enforcement is the semaphore inside _execute_run.
         active_runs = sum(1 for s in self.runs.values() if s.status == "running")
@@ -372,19 +501,39 @@ class RunManager:
             )
 
         flags = payload.get("flags", {})
+        if not isinstance(flags, dict):
+            raise ValueError("Run flags must be an object.")
+        for key in ("credentials", "auth_tokens"):
+            submitted = payload.get(key)
+            if submitted:
+                if not isinstance(submitted, dict):
+                    raise ValueError(f"{key} must be an object.")
+                self._validate_tenant_credentials(submitted)
         # Reject a full run before creating background state. The old behavior
         # accepted it, then quietly produced an incomplete research result.
         if not bool(flags.get("collect_only", False)) and not bool(flags.get("validate_credentials", False)):
             from aria.engine.ensemble.providers import ensure_llm_ready
 
-            credential_scope = self._build_credential_scope(payload)
-            async with scoped_environ(credential_scope.to_env()):
+            credential_scope = self._build_credential_scope(payload, tenant_id)
+            async with scoped_environ(
+                credential_scope.to_env(),
+                unset=_LLM_ENV_KEYS if self._managed_saas() else None,
+            ):
                 await ensure_llm_ready(self.base_settings)
 
         run_id = uuid4().hex[:12]
-        output_dir = self.base_settings.runs_dir / run_id
+        if not tenant_id:
+            raise ValueError("Tenant ID is required to start a research run.")
+        output_dir = self.base_settings.runs_dir / tenant_id / run_id
         output_dir.mkdir(parents=True, exist_ok=True)
         mission = load_mission_text(payload["mission_yaml"])
+
+        # Store any submitted source credentials before creating visible run
+        # state. A rejected credential save must not leave an unstartable job
+        # behind in the tenant's run history.
+        credentials = payload.get("credentials")
+        if credentials:
+            self.save_credentials(tenant_id, credentials)
 
         # Attach research brief from Research Director (enables phased collection)
         research_brief = payload.get("research_brief")
@@ -392,13 +541,20 @@ class RunManager:
             mission = dict(mission)
             mission["_research_brief"] = research_brief
 
-        state = RunState(run_id=run_id, mission=mission, output_dir=str(output_dir))
+        workflow = "collection_only" if bool(flags.get("collect_only", False)) else "full_research"
+        state = RunState(
+            run_id=run_id,
+            mission=mission,
+            output_dir=str(output_dir),
+            workflow=workflow,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            flags=dict(flags),
+            message="Queued collection-only job" if workflow == "collection_only" else "Queued",
+        )
         async with self._lock:
             self.runs[run_id] = state
             self._persist_state(state)
-        credentials = payload.get("credentials")
-        if credentials:
-            self.save_credentials(credentials)
         task = asyncio.create_task(self._execute_run(state, payload))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
@@ -406,12 +562,15 @@ class RunManager:
 
     async def _execute_run(self, state: RunState, payload: dict[str, Any]) -> None:
         async with self._run_semaphore:  # acquire slot — released when run finishes
-            credential_scope = self._build_credential_scope(payload)
+            credential_scope = self._build_credential_scope(payload, state.tenant_id)
             run_env = credential_scope.to_env()
 
             try:
-                async with scoped_environ(run_env):
-                    flags = payload.get("flags", {})
+                async with scoped_environ(
+                    run_env,
+                    unset=_LLM_ENV_KEYS if self._managed_saas() else None,
+                ):
+                    flags = state.flags or payload.get("flags", {})
                     output_dir = Path(state.output_dir)
                     settings = load_config(output_dir=output_dir)
                     # Point runs_dir at the parent so the engine stores files directly
@@ -435,13 +594,42 @@ class RunManager:
                         authenticated_only=bool(flags.get("authenticated_only", False)),
                         public_only=bool(flags.get("public_only", False)),
                         resume=bool(flags.get("resume", False)),
-                        credentials_path=str(self.base_settings.credentials_file),
+                        credentials_path=str(self._credentials_file_for_tenant(state.tenant_id)),
                     )
                 await self._complete_run(state.run_id, result)
+            except asyncio.CancelledError:
+                # Deployments and local restarts cancel in-process jobs. Keep
+                # a durable, honest state that the user can explicitly restart.
+                await self._update_state(
+                    state.run_id,
+                    status="interrupted",
+                    stage="interrupted",
+                    message="Run interrupted by API shutdown",
+                    error="API shut down before this run completed. Restart this run to continue.",
+                )
+                raise
             except Exception as exc:
                 _logger.exception("Run %s failed", state.run_id)
                 safe_error = f"{type(exc).__name__}: {_scrub_secrets(str(exc))[:400]}"
                 await self._update_state(state.run_id, status="failed", stage="failed", message="Run failed", error=safe_error)
+
+    async def shutdown(self) -> None:
+        """Cancel local work and persist an explicit restartable state."""
+        tasks = tuple(task for task in self._tasks if not task.done())
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+        async with self._lock:
+            for state in self.runs.values():
+                if state.status in {"queued", "pending", "running"}:
+                    state.status = "interrupted"
+                    state.stage = "interrupted"
+                    state.message = "Run interrupted by API shutdown"
+                    state.error = state.error or "API shut down before this run completed. Restart this run to continue."
+                    state.updated_at = datetime.now(timezone.utc).isoformat()
+                    self._persist_state(state)
 
     async def record_event(self, run_id: str, event: dict[str, Any]) -> None:
         async with self._lock:
@@ -455,19 +643,58 @@ class RunManager:
                 state.docs_collected = max(state.docs_collected, int(event["count"]))
             elif stage in ("clean_progress", "clean_done") and "count" in event:
                 state.docs_cleaned = int(event["count"])
+            elif stage == "clean_failed":
+                state.failures.append(
+                    {
+                        "scope": "cleaning",
+                        "message": event.get("message", "AI cleaning failed"),
+                        "error": _scrub_secrets(str(event.get("error", "")))[:400],
+                    }
+                )
+            source = event.get("source")
+            if source and stage in {"source_started", "source_done", "source_failed"}:
+                source_state = state.source_status.setdefault(str(source), {"source": source})
+                source_state.update(
+                    {
+                        "status": {
+                            "source_started": "running",
+                            "source_done": "completed",
+                            "source_failed": "failed",
+                        }[stage],
+                        "message": event.get("message", ""),
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                )
+                if stage == "source_started":
+                    source_state["started_at"] = source_state["updated_at"]
+                if "count" in event:
+                    source_state["documents"] = int(event["count"])
+                if stage == "source_failed":
+                    source_state["error"] = _scrub_secrets(str(event.get("error", "Collector failed")))[:400]
+                    state.failures.append({"scope": "source", **source_state})
             state.updated_at = datetime.now(timezone.utc).isoformat()
             self._persist_state(state)
 
     async def _complete_run(self, run_id: str, result: RunResult) -> None:
         async with self._lock:
             state = self.runs[run_id]
-            state.status = "completed"
-            state.stage = "completed"
-            state.message = "Run completed"
-            state.stats = result.stats
+            required_failures = [failure for failure in state.failures if failure.get("scope") in {"source", "cleaning"}]
+            if state.workflow == "collection_only":
+                state.status = "collection_completed"
+                state.message = "Collection completed. Run full research to clean and analyze these sources."
+                # Collection-only preserves raw evidence for inspection. It
+                # must not present those records as AI-cleaned output.
+                state.docs_cleaned = 0
+                state.stats = {**result.stats, "cleaned": 0}
+                state.documents = result.raw_documents[:100]
+            else:
+                state.status = "completed_with_failures" if required_failures else "completed"
+                state.message = "Run completed with failures" if required_failures else "Run completed"
+                state.stats = result.stats
+                state.documents = (result.clean_documents or result.raw_documents)[:100]
+            state.stage = state.status
             state.exports = result.export_paths
             state.report_path = result.report_path
-            state.documents = (result.clean_documents or result.raw_documents)[:100]
             state.raw_documents = result.raw_documents[:100]
             state.ensemble_documents = [
                 document for document in result.raw_documents if document.get("source_type") in {"llm_response", "llm_comparison"}
@@ -496,22 +723,7 @@ class RunManager:
             docs_collected = state.docs_collected or state.stats.get("collected", 0)
             docs_cleaned = state.docs_cleaned or state.stats.get("cleaned", 0)
             total_documents = docs_cleaned or docs_collected or len(state.documents)
-            if state.status == "completed":
-                progress = 100
-            elif state.status in {"failed", "cancelled"}:
-                progress = 100
-            elif state.stage in {"export", "report", "export_done"}:
-                progress = 90
-            elif state.stage in {"knowledge_graph", "images", "kb_save", "score"}:
-                progress = 80
-            elif state.stage in {"cleaning", "clean_progress", "clean_done"}:
-                progress = 65
-            elif docs_collected:
-                progress = 40
-            elif state.status == "running":
-                progress = 10
-            else:
-                progress = 0
+            progress = run_progress(state)
             return {
                 "run_id": state.run_id,
                 "status": state.status,
@@ -521,8 +733,9 @@ class RunManager:
                 "updated_at": state.updated_at,
                 "logs": state.logs[-200:],
                 "stats": state.stats,
-                "exports": state.exports,
-                "report_path": state.report_path,
+                # Internal artifact paths stay server-side. Export endpoints
+                # expose only a controlled download URL and filename.
+                "available_exports": sorted(state.exports),
                 "documents": state.documents,
                 "raw_documents": state.raw_documents,
                 "ensemble_documents": state.ensemble_documents,
@@ -535,7 +748,6 @@ class RunManager:
                 "total_documents": total_documents,
                 "progress": progress,
                 "error": state.error,
-                "output_dir": state.output_dir,
                 # Intelligence outputs (lightweight summaries for main status call)
                 "has_knowledge_graph": bool(state.knowledge_graph),
                 "has_gap_analysis": bool(state.gap_analysis),
@@ -544,4 +756,8 @@ class RunManager:
                 "gaps_count": len((state.gap_analysis or {}).get("gaps", [])),
                 "top_entities": (state.knowledge_graph or {}).get("top_entities", [])[:10],
                 "query_plan": state.query_plan,
+                "source_status": list(state.source_status.values()),
+                "failures": state.failures[-100:],
+                "workflow": state.workflow,
+                "approved_findings": state.approved_findings,
             }

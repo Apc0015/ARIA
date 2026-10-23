@@ -14,6 +14,8 @@ const Monitor = lazy(() => import("./pages/Monitor"));
 const Report = lazy(() => import("./pages/Report"));
 const Sources = lazy(() => import("./pages/Sources"));
 const Settings = lazy(() => import("./pages/Settings"));
+const Organization = lazy(() => import("./pages/Organization"));
+const Login = lazy(() => import("./pages/Login"));
 
 const qc = new QueryClient({
   defaultOptions: { queries: { staleTime: 5_000 } },
@@ -32,6 +34,7 @@ const page = (el: ReactNode) => (
 );
 
 const router = createBrowserRouter([
+  { path: "/login", element: page(<Login />) },
   {
     path: "/",
     element: <App />,
@@ -44,6 +47,7 @@ const router = createBrowserRouter([
       { path: "report/:runId", element: page(<Report />) },
       { path: "sources", element: page(<Sources />) },
       { path: "settings", element: page(<Settings />) },
+      { path: "organization", element: page(<Organization />) },
     ],
   },
 ]);

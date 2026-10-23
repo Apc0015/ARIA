@@ -1,4 +1,14 @@
-export type RunStatus = "queued" | "pending" | "running" | "completed" | "failed" | "cancelled";
+export type RunStatus = "queued" | "pending" | "running" | "completed" | "completed_with_failures" | "collection_completed" | "interrupted" | "failed" | "cancelled";
+
+export interface SourceRunStatus {
+  source: string;
+  status: "running" | "completed" | "failed";
+  message?: string;
+  documents?: number;
+  started_at?: string;
+  updated_at?: string;
+  error?: string;
+}
 
 export interface Run {
   run_id: string;
@@ -13,6 +23,10 @@ export interface Run {
   sources_used?: string[];
   total_documents?: number;
   progress?: number; // 0–100
+  source_status?: SourceRunStatus[];
+  failures?: Array<{ scope?: string; message?: string; error?: string; source?: string }>;
+  workflow?: "full_research" | "collection_only";
+  available_exports?: string[];
 }
 
 export interface Document {

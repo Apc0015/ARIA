@@ -33,7 +33,7 @@ from aria.engine.orchestrator.collection import (
 )
 from aria.engine.orchestrator.dedup import _content_fingerprint
 from aria.engine.orchestrator.cleaning import run_cleaning_phase
-from aria.engine.orchestrator.enrichment import _score_documents
+from aria.engine.orchestrator.enrichment import _score_documents, run_enrichment_phase
 from aria.engine.orchestrator.exporting import run_export_phase
 
 from aria.utils.scrub import scrub_secrets as _scrub
@@ -231,6 +231,9 @@ class InfoCollectorOrchestrator:
         shared_memory = SharedMemory(
             backend=self._config.shared_memory_backend,
             redis_url=self._config.redis_url,
+            # Redis deduplication is isolated to this exact research run.
+            # No tenant can influence another tenant's collection results.
+            namespace=f"aria:run:{run_id}",
         )
 
         if validate_credentials:
@@ -478,80 +481,50 @@ class InfoCollectorOrchestrator:
                 key=lambda d: d.get(sort_by, 0) or 0,
                 reverse=(sort_order == "desc"),
             )
-        clean_store.save(clean_docs)
+        if not collect_only:
+            clean_store.save(clean_docs)
 
-        # ── Gap detection ─────────────────────────────────────────────────────
-        gap_result: dict = {}
-        if self._config.gap_detection_enabled and not collect_only and clean_docs:
-            await self._emit("gap_detect", "Detecting research gaps...")
-            try:
-                from aria.engine.intelligence.gap_detector import detect_gaps
-                gap_result = await detect_gaps(
-                    docs=clean_docs,
-                    topic=topic,
-                    intent=intent,
-                    sub_questions=sub_questions,
-                    config=self._config,
-                )
-            except Exception as exc:
-                self._log.debug("Gap detection failed: %s", exc)
-
-            if gap_result.get("has_gaps") and gap_result.get("follow_up_queries"):
-                follow_ups = gap_result["follow_up_queries"]
-                await self._emit(
-                    "gap_detect",
-                    f"Found {len(gap_result['gaps'])} gaps — running follow-up ({len(follow_ups)} queries)",
-                )
-                extra_docs = await self._run_gap_followup(
-                    follow_up_queries=follow_ups,
-                    enabled_sources=collection_cfg.get("sources", {}).get("enabled", ["web", "academic"]),
-                    max_per_source=max(5, max_per_source // 3),
-                    aggregator=aggregator,
-                    instructions=instructions if not collect_only else "",
-                    output_schema=output_schema if not collect_only else {},
-                    topic=topic,
-                    intent=intent,
-                )
-                if extra_docs:
-                    clean_docs.extend(extra_docs)
-                    if sort_by:
-                        clean_docs = sorted(
-                            clean_docs,
-                            key=lambda d: d.get(sort_by, 0) or 0,
-                            reverse=(sort_order == "desc"),
-                        )
-                    clean_store.save(clean_docs)
-                    await self._emit("gap_done", f"Added {len(extra_docs)} docs from gap follow-up")
-
-        # ── Knowledge graph ───────────────────────────────────────────────────
-        kg_data: dict = {}
-        if self._config.knowledge_graph_enabled and not collect_only and clean_docs:
-            await self._emit("knowledge_graph", "Building knowledge graph...")
-            try:
-                from aria.engine.intelligence.knowledge_graph import KnowledgeGraph
-                kg = KnowledgeGraph()
-                await kg.build_from_documents(clean_docs, topic, max_docs_to_extract=80)
-                self._log.info(kg.summary())
-                kg_data = kg.to_dict()
-            except Exception as exc:
-                self._log.debug("Knowledge graph failed: %s", exc)
-            contradictions = kg_data.get("contradictions", [])
-            await self._emit(
-                "knowledge_graph",
-                f"Graph: {kg_data.get('total_entities', 0)} entities, {len(contradictions)} contradictions",
-                has_contradictions=bool(contradictions),
+        # ── Enrichment ────────────────────────────────────────────────────────
+        # All intelligence behavior lives in one phase module. This prevents
+        # graph/gap/image behavior from silently diverging between code paths.
+        async def _gap_followup(follow_up_queries: list[str], _gap_result: dict) -> list[dict]:
+            return await self._run_gap_followup(
+                follow_up_queries=follow_up_queries,
+                enabled_sources=collection_cfg.get("sources", {}).get("enabled", ["web", "academic"]),
+                max_per_source=max(5, max_per_source // 3),
+                aggregator=aggregator,
+                instructions=instructions,
+                output_schema=output_schema,
+                topic=topic,
+                intent=intent,
             )
 
-        # ── Image extraction ──────────────────────────────────────────────────
-        images: list[dict] = []
-        if self._config.image_extraction_enabled and clean_docs:
-            try:
-                from aria.engine.intelligence.image_extractor import extract_images_from_docs
-                images = extract_images_from_docs(clean_docs, max_total=50, max_per_doc=5)
-            except Exception as exc:
-                self._log.debug("Image extraction failed: %s", exc)
-            if images:
-                await self._emit("images", f"Extracted {len(images)} images")
+        enrichment = await run_enrichment_phase(
+            clean_docs,
+            topic,
+            intent,
+            sub_questions,
+            self._config.model_copy(
+                update={
+                    "gap_detection_enabled": self._config.gap_detection_enabled and not collect_only,
+                    "knowledge_graph_enabled": self._config.knowledge_graph_enabled and not collect_only,
+                    "image_extraction_enabled": self._config.image_extraction_enabled and not collect_only,
+                }
+            ),
+            emit_fn=self._emit,
+            log=self._log,
+            gap_followup_fn=None if collect_only else _gap_followup,
+        )
+        gap_result = enrichment["gap_result"]
+        kg_data = enrichment["kg_data"]
+        images = enrichment["images"]
+        extra_docs = enrichment["extra_docs"]
+        if extra_docs:
+            clean_docs.extend(extra_docs)
+            if sort_by:
+                clean_docs = sorted(clean_docs, key=lambda d: d.get(sort_by, 0) or 0, reverse=(sort_order == "desc"))
+            clean_store.save(clean_docs)
+            await self._emit("gap_done", f"Added {len(extra_docs)} docs from gap follow-up")
 
         # ── KB save ───────────────────────────────────────────────────────────
         if kb and clean_docs:
@@ -562,7 +535,7 @@ class InfoCollectorOrchestrator:
         relevant_count = sum(1 for d in clean_docs if d.get("is_relevant", True))
         stats = {
             "collected": len(raw_docs),
-            "cleaned": len(clean_docs),
+            "cleaned": 0 if collect_only else len(clean_docs),
             "relevant": relevant_count,
             "sources": source_stats,
             "run_id": run_id,
@@ -604,7 +577,7 @@ class InfoCollectorOrchestrator:
             "citation_docs_fetched": _citation_docs,
             "llm_provider": _provider,
             "llm_model": _model,
-            "cleaning_method": "llm" if _provider != "unknown" else "fallback",
+            "cleaning_method": "not_run" if collect_only else ("llm" if _provider != "unknown" else "fallback"),
             "dedup_method": " + ".join(_dedup_parts),
             "started_at": _pipeline_start.isoformat(),
             "completed_at": _pipeline_end.isoformat(),
@@ -612,7 +585,7 @@ class InfoCollectorOrchestrator:
         }
 
         # ── Export + report ───────────────────────────────────────────────────
-        formats = output_cfg.get("formats", ["json", "csv", "markdown"])
+        formats = output_cfg.get("formats", ["json", "csv", "markdown", "html", "zip"])
         export_paths, report_path = await run_export_phase(
             raw_docs=raw_docs,
             clean_docs=clean_docs,
@@ -624,6 +597,8 @@ class InfoCollectorOrchestrator:
             images=images,
             gap_result=gap_result,
             methodology=methodology,
+            report_documents=clean_docs if collect_only else None,
+            include_clean_exports=not collect_only,
             emit_fn=self._emit,
             log=self._log,
         )
@@ -633,7 +608,7 @@ class InfoCollectorOrchestrator:
             run_id=run_id,
             stats=stats,
             raw_documents=raw_docs,
-            clean_documents=clean_docs,
+            clean_documents=[] if collect_only else clean_docs,
             export_paths=export_paths,
             report_path=report_path,
             knowledge_graph=kg_data,

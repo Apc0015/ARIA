@@ -19,12 +19,14 @@ from starlette.middleware.base import BaseHTTPMiddleware
 # Sliding window rate limits
 _RUN_LIMIT = int(os.environ.get("ARIA_RATE_LIMIT_RUNS_PER_HOUR", "30"))  # new runs per client per hour
 _REQ_LIMIT = int(os.environ.get("ARIA_RATE_LIMIT_REQS_PER_MIN", "300"))  # total requests per client per minute
+_LOGIN_LIMIT = int(os.environ.get("ARIA_RATE_LIMIT_LOGINS_PER_15_MIN", "10"))
 _MAX_TRACKED = int(os.environ.get("ARIA_RATE_LIMIT_MAX_CLIENTS", "10000"))
 # Trust X-Forwarded-For / X-Real-IP (set when running behind the provided nginx)
 _TRUST_PROXY = os.environ.get("ARIA_TRUST_PROXY", "").lower() in ("true", "1", "yes")
 
 _run_windows: "OrderedDict[str, deque]" = OrderedDict()   # client → timestamps of run starts
 _req_windows: "OrderedDict[str, deque]" = OrderedDict()   # client → timestamps of all requests
+_login_windows: "OrderedDict[str, deque]" = OrderedDict() # client → login attempts
 _lock: _asyncio.Lock | None = None
 
 
@@ -94,6 +96,19 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     headers={"Retry-After": "60"},
                 )
             req_w.append(now)
+
+            # Login attempts have a much smaller window than ordinary API
+            # traffic, limiting credential stuffing without slowing research.
+            if request.method == "POST" and path == "/api/auth/login":
+                login_w = _window(_login_windows, client)
+                _sliding_count(login_w, 900)
+                if len(login_w) >= _LOGIN_LIMIT:
+                    return JSONResponse(
+                        {"detail": "Too many sign-in attempts. Try again in 15 minutes."},
+                        status_code=429,
+                        headers={"Retry-After": "900"},
+                    )
+                login_w.append(now)
 
             # 2. Run creation rate per client per hour (POST /api/runs only)
             if request.method == "POST" and path == "/api/runs":

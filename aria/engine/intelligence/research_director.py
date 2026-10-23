@@ -124,8 +124,12 @@ should be exactly what an expert researcher would want answered.
 class ResearchDirector:
     """Conversational agent that builds a ResearchBrief before collection starts."""
 
-    def __init__(self, llm_caller: Optional[Any] = None):
-        self._llm = llm_caller or self._default_llm_caller()
+    def __init__(
+        self,
+        llm_caller: Optional[Any] = None,
+        llm_overrides: Optional[dict[str, str]] = None,
+    ):
+        self._llm = llm_caller or self._default_llm_caller(llm_overrides)
 
     # ── Public API ─────────────────────────────────────────────────────────────
 
@@ -218,11 +222,11 @@ class ResearchDirector:
 
     async def _disambiguate(self, topic: str) -> dict[str, Any]:
         prompt = _DISAMBIGUATE_PROMPT.format(topic=topic)
-        try:
-            response = await self._call_llm(prompt)
-            return self._parse_json(response) or {}
-        except Exception:
-            return {"is_ambiguous": False}
+        response = await self._call_llm(prompt)
+        parsed = self._parse_json(response)
+        if parsed is None:
+            raise RuntimeError("The AI model returned an invalid planning response.")
+        return parsed
 
     async def _next_question(
         self, brief: ResearchBrief, asked: list[str]
@@ -234,11 +238,11 @@ class ResearchDirector:
             context=context,
             asked=asked_str,
         )
-        try:
-            response = await self._call_llm(prompt)
-            return self._parse_json(response) or {"done": True}
-        except Exception:
-            return {"done": True}
+        response = await self._call_llm(prompt)
+        parsed = self._parse_json(response)
+        if parsed is None:
+            raise RuntimeError("The AI model returned an invalid planning response.")
+        return parsed
 
     async def _build_brief(self, brief: ResearchBrief) -> None:
         context = json.dumps(
@@ -254,13 +258,11 @@ class ResearchDirector:
             context=context,
             year=datetime.now().year,
         )
-        try:
-            response = await self._call_llm(prompt)
-            data = self._parse_json(response) or {}
-            self._apply_brief_data(brief, data)
-        except Exception as exc:
-            logger.warning("ResearchDirector: brief build failed (%s), using heuristic", exc)
-            self._apply_heuristic_brief(brief)
+        response = await self._call_llm(prompt)
+        data = self._parse_json(response)
+        if data is None:
+            raise RuntimeError("The AI model returned an invalid research brief.")
+        self._apply_brief_data(brief, data)
 
     def _apply_answer(
         self,
@@ -323,20 +325,6 @@ class ResearchDirector:
         brief.skip_sources = data.get("skip_sources", [])
         brief.excluded_angles += data.get("excluded_angles", [])
 
-    def _apply_heuristic_brief(self, brief: ResearchBrief) -> None:
-        t = brief.resolved_topic or brief.original_topic
-        year = datetime.now().year
-        brief.key_questions = [
-            f"What is {t} and how does it work?",
-            f"What are the main applications or examples of {t}?",
-            f"What are recent developments in {t} ({year})?",
-            f"What are the limitations and criticisms of {t}?",
-            f"Who are the key researchers, organisations, or companies in {t}?",
-        ]
-        brief.entities = []
-        brief.must_have_sources = ["web", "academic", "news"]
-        brief.skip_sources = []
-
     async def _call_llm(self, prompt: str) -> str:
         if self._llm:
             return await self._llm(prompt, _DIRECTOR_SYSTEM)
@@ -355,12 +343,14 @@ class ResearchDirector:
             return None
 
     @staticmethod
-    def _default_llm_caller() -> Any:
+    def _default_llm_caller(llm_overrides: Optional[dict[str, str]] = None) -> Any:
         async def caller(prompt: str, system: str) -> str:
             from aria.engine.ensemble.providers import resolve_cleaning_llm
             from aria.engine.cleaner.llm_cleaner import _call_anthropic, _call_openai_compat
 
-            provider, model_id, base_url, api_key = resolve_cleaning_llm(None)
+            provider, model_id, base_url, api_key = resolve_cleaning_llm(
+                None, overrides=llm_overrides
+            )
             if provider == "anthropic":
                 return await _call_anthropic(
                     prompt, model_id, api_key, system,

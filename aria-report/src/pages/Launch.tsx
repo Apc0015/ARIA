@@ -9,8 +9,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
-import { api, ensureApiKey, getApiKey } from "@/lib/api";
+import { api } from "@/lib/api";
 import { SOURCES, SOURCE_CATEGORIES, sourcesByCategory, advancedSources } from "@/lib/sources";
+import { useEnabledSources } from "@/hooks/useEnabledSources";
 import { toast } from "sonner";
 import type { SourceCategory } from "@/lib/sources";
 
@@ -77,10 +78,10 @@ const LAUNCH_MODES: Array<{
 // ── API helpers ───────────────────────────────────────────────────────────────
 
 async function startDirectorSession(topic: string): Promise<DirectorSession> {
-  await ensureApiKey().catch(() => "");
   const res = await fetch("/api/director/session", {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...(getApiKey() ? { "X-API-Key": getApiKey() } : {}) },
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ topic }),
   });
   if (!res.ok) throw new Error(await res.text());
@@ -91,10 +92,10 @@ async function sendDirectorAnswer(
   sessionId: string,
   answer: string
 ): Promise<DirectorSession> {
-  await ensureApiKey().catch(() => "");
   const res = await fetch(`/api/director/${sessionId}/answer`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...(getApiKey() ? { "X-API-Key": getApiKey() } : {}) },
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ answer }),
   });
   if (!res.ok) throw new Error(await res.text());
@@ -125,9 +126,8 @@ export default function Launch() {
   const [depth, setDepth] = useState(2);
   const [showConfig, setShowConfig] = useState(false);
   const [showAdvancedSources, setShowAdvancedSources] = useState(false);
-  const [enabledSources, setEnabledSources] = useState<Record<string, boolean>>(
-    Object.fromEntries(SOURCES.map((s) => [s.id, ["web", "arxiv", "hackernews"].includes(s.id)]))
-  );
+  const { isEnabled, toggle } = useEnabledSources();
+  const sourceEnabled = (id: string) => isEnabled(id, ["web", "arxiv", "hackernews"].includes(id));
 
   // ── Mutations ─────────────────────────────────────────────────────────────
 
@@ -136,8 +136,8 @@ export default function Launch() {
       const free_sources: Record<string, boolean> = {};
       const auth_sources: Record<string, boolean> = {};
       SOURCES.forEach((s) => {
-        if (s.credentials.length === 0) free_sources[s.id] = enabledSources[s.id] ?? false;
-        else auth_sources[s.id] = enabledSources[s.id] ?? false;
+        if (s.credentials.length === 0) free_sources[s.id] = sourceEnabled(s.id);
+        else auth_sources[s.id] = sourceEnabled(s.id);
       });
 
       const resolvedTopic =
@@ -199,8 +199,8 @@ export default function Launch() {
       } else if (/^5\d\d/.test(msg)) {
         toast.error("Director service unavailable. Starting in manual mode.");
       } else {
-        // Network error or unexpected — silently fall through (director is optional)
         console.warn("Director session failed:", msg);
+        toast.error("Guided research could not start. Configure an AI model or use Manual mode.");
       }
       setPhase("config");
     } finally {
@@ -237,10 +237,10 @@ export default function Launch() {
   }
 
   function toggleSource(id: string) {
-    setEnabledSources((prev) => ({ ...prev, [id]: !prev[id] }));
+    toggle(id, ["web", "arxiv", "hackernews"].includes(id));
   }
 
-  const activeCount = Object.values(enabledSources).filter(Boolean).length;
+  const activeCount = SOURCES.filter((source) => sourceEnabled(source.id)).length;
   const hasMissionYaml = Boolean(missionYaml.trim());
   const canLaunch =
     launchMode === "yaml" || hasMissionYaml
@@ -558,7 +558,7 @@ export default function Launch() {
                           key={s.id}
                           onClick={() => toggleSource(s.id)}
                           className={`flex items-center gap-2 p-2 rounded-lg border text-left transition-all text-[12px] ${
-                            enabledSources[s.id]
+                            sourceEnabled(s.id)
                               ? "border-aria-accent/40 bg-aria-accent/[0.08] text-aria-text2"
                               : "border-white/[0.06] bg-transparent text-aria-text4"
                           }`}
@@ -592,7 +592,7 @@ export default function Launch() {
                         key={s.id}
                         onClick={() => toggleSource(s.id)}
                         className={`flex items-center gap-2 p-2 rounded-lg border text-left transition-all text-[12px] ${
-                          enabledSources[s.id]
+                          sourceEnabled(s.id)
                             ? "border-aria-accent/40 bg-aria-accent/[0.08] text-aria-text2"
                             : "border-white/[0.06] bg-transparent text-aria-text4"
                         }`}

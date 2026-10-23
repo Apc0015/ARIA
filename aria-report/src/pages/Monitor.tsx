@@ -11,7 +11,8 @@ import { Button } from "@/components/ui/button";
 import { RunRow } from "@/components/shared/RunRow";
 import { useRun, useRunDocuments } from "@/hooks/useRun";
 import { useRuns } from "@/hooks/useRuns";
-import { SOURCES } from "@/lib/sources";
+import { api } from "@/lib/api";
+import { toast } from "sonner";
 
 export default function Monitor() {
   const { runId } = useParams<{ runId: string }>();
@@ -21,7 +22,7 @@ export default function Monitor() {
   const { data: docsData } = useRunDocuments(runId ?? "", Boolean(runId));
 
   useEffect(() => {
-    if (runId && (run?.status === "completed" || run?.status === "failed")) {
+    if (runId && (run?.status === "completed" || run?.status === "completed_with_failures" || run?.status === "collection_completed" || run?.status === "failed")) {
       const t = setTimeout(() => navigate(`/report/${runId}`), 1500);
       return () => clearTimeout(t);
     }
@@ -72,7 +73,19 @@ export default function Monitor() {
   const docs = docsData?.documents ?? [];
   const totalDocs = docsData?.total ?? 0;
   const progress = run?.progress ?? 0;
-  const isLive = run?.status === "running" || run?.status === "pending";
+  const sourceStatuses = run?.source_status ?? [];
+  const completedSuccessfully = run?.status === "completed" || run?.status === "collection_completed";
+  const completedWithWarnings = run?.status === "completed_with_failures";
+
+  async function restartInterruptedRun() {
+    if (!runId) return;
+    try {
+      const restarted = await api.runs.restart(runId);
+      navigate(`/monitor/${restarted.run_id}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not restart this run");
+    }
+  }
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -111,22 +124,27 @@ export default function Monitor() {
             Source Pipeline
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {SOURCES.slice(0, 12).map((src, i) => {
-              const sourceActive = isLive && i % 3 !== 2;
+            {sourceStatuses.length === 0 ? (
+              <GlassCard className="p-3 text-[11px] text-aria-text4">
+                Collector status will appear when selected sources begin running.
+              </GlassCard>
+            ) : sourceStatuses.map((source, i) => {
+              const sourceActive = source.status === "running";
+              const failed = source.status === "failed";
               return (
                 <motion.div
-                  key={src.id}
+                  key={source.source}
                   initial={false}
                   transition={{ delay: i * 0.04 }}
                 >
-                  <GlassCard className={`p-3 flex items-center gap-2 ${sourceActive ? "border-aria-accent/20" : ""}`}>
-                    <span className="text-base">{src.icon}</span>
+                  <GlassCard className={`p-3 flex items-center gap-2 ${sourceActive ? "border-aria-accent/20" : failed ? "border-red-400/30" : ""}`}>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 mb-1">
-                        <span className="text-[11px] font-medium text-aria-text2 truncate">{src.name}</span>
+                        <span className="text-[11px] font-medium text-aria-text2 truncate">{source.source}</span>
                         {sourceActive && (
                           <span className="w-1.5 h-1.5 rounded-full bg-aria-accent animate-pulse-dot" />
                         )}
+                        {failed && <span className="text-[10px] text-red-400">failed</span>}
                       </div>
                       <div className="h-0.5 bg-[var(--aria-surface)] rounded-full overflow-hidden">
                         {sourceActive && (
@@ -141,7 +159,7 @@ export default function Monitor() {
                       </div>
                     </div>
                     <span className="text-[11px] font-semibold text-aria-text1 tabular-nums w-8 text-right">
-                      {sourceActive ? "…" : "—"}
+                      {source.documents ?? "—"}
                     </span>
                   </GlassCard>
                 </motion.div>
@@ -181,12 +199,13 @@ export default function Monitor() {
         )}
 
         {/* Completion notice */}
-        {(run?.status === "completed" || run?.status === "failed") && (
+        {(run?.status === "completed" || run?.status === "completed_with_failures" || run?.status === "collection_completed" || run?.status === "failed" || run?.status === "interrupted") && (
           <motion.div initial={false}>
             <GlassCard className="p-4 text-center border-aria-success/20">
-              <p className={`text-[13px] font-medium tracking-caption ${run.status === "completed" ? "text-aria-success" : "text-red-400"}`}>
-                {run.status === "completed" ? "✓ Run complete — redirecting to report…" : "✗ Run failed"}
+              <p className={`text-[13px] font-medium tracking-caption ${completedSuccessfully ? "text-aria-success" : completedWithWarnings ? "text-amber-400" : "text-red-400"}`}>
+                {run.status === "completed" ? "Run complete - redirecting to report..." : run.status === "completed_with_failures" ? "Run completed with failures - redirecting to report..." : run.status === "collection_completed" ? "Collection completed - source data is available, but no AI analysis was run" : run.status === "interrupted" ? "Run interrupted - restart it to continue" : "Run failed"}
               </p>
+              {run.status === "interrupted" && <Button size="sm" variant="subtle" className="mt-3" onClick={restartInterruptedRun}>Restart research</Button>}
               {run.error && <p className="text-aria-text4 text-[11px] mt-1">{run.error}</p>}
             </GlassCard>
           </motion.div>

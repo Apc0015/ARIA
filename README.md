@@ -1,6 +1,8 @@
 # ARIA — Agentic Research Intelligence Architecture
 
-ARIA is a fully automated research collection and intelligence platform. Give it a topic and a research goal — it runs selected source collectors in parallel, deduplicates and stores every document, then uses a connected AI model to extract structured, relevance-scored data. Results are available as research exports and an HTML report.
+ARIA is a research-evidence workspace. A team creates a research brief, selects trusted sources, collects traceable evidence, reviews AI-assisted analysis against captured source text, approves findings, and exports a decision-ready report.
+
+For the managed-SaaS deployment model, read [SaaS operations](docs/SAAS_OPERATIONS.md). Customer access uses organization sessions, not browser API keys.
 
 ## Quickstart
 
@@ -59,7 +61,7 @@ python -m aria.cli --topic "AI safety benchmarks 2025" --mission missions/exampl
 | Multilingual | DuckDuckGo across 12 language regions (de/fr/es/zh/ja/pt/ar/ru…) |
 | User URLs | Explicit URLs you provide directly |
 
-### Auth required (silently skipped if no token)
+### Auth required (reported as unavailable if no token)
 
 | Source | Credentials |
 |---|---|
@@ -246,10 +248,10 @@ tests/                   Python test suite
 
 ## Security defaults
 
-- **API auth is required by default.** Set `ARIA_API_KEY`; if unset, the
-  server generates a one-session key and prints it in the log. Local dev
-  (`aria --serve-api` on a loopback bind) disables auth automatically;
-  `ARIA_API_KEY_REQUIRED=false` disables it explicitly (unsafe).
+- **Managed SaaS authentication uses organization sessions.** Configure the
+  bootstrap administrator and credential-encryption values in
+  [SaaS operations](docs/SAAS_OPERATIONS.md). Do not put shared API keys in a
+  customer browser.
 - **The API binds 127.0.0.1 by default.** Pass `--api-host 0.0.0.0` (or set
   `ARIA_API_HOST`) to expose it, ideally behind the provided nginx config.
 - **robots.txt is respected** by the web scraper and link crawler

@@ -30,6 +30,15 @@ jobs:
         # claims to be. conftest.py disables API auth and robots fetches.
         run: python -m pytest tests/ -q
 
+      - name: Validate production compose configuration
+        env:
+          ARIA_CREDENTIALS_KEY: q7uF5aD5yR0I4aV9P4KvvXPAcsn4GFZ4Vzuow9VSi9A=
+          ARIA_BOOTSTRAP_ADMIN_EMAIL: ci-admin@example.com
+          ARIA_BOOTSTRAP_ADMIN_PASSWORD: correct-horse-battery-staple
+          ARIA_ALLOWED_ORIGINS: https://aria.example.com
+          ARIA_ALLOWED_HOSTS: aria.example.com
+        run: docker compose config --quiet
+
   frontend:
     name: Frontend build + tests
     runs-on: ubuntu-latest

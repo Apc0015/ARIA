@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, Play, Activity, FileText, Zap, Settings, Sun, Moon } from "lucide-react";
+import { LayoutDashboard, Play, Activity, FileText, Zap, Settings, Sun, Moon, LogOut, Users } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +16,9 @@ const ALL_NAV = [...NAV, { to: "/settings", icon: Settings, label: "Settings", e
 interface AppSidebarProps {
   theme: "dark" | "light";
   onToggleTheme: () => void;
+  userEmail: string;
+  userRole: string;
+  onLogout: () => void;
 }
 
 function SidebarItem({ to, icon: Icon, label, exact }: typeof NAV[0]) {
@@ -51,7 +54,7 @@ function SidebarItem({ to, icon: Icon, label, exact }: typeof NAV[0]) {
   );
 }
 
-export function AppSidebar({ theme, onToggleTheme }: AppSidebarProps) {
+export function AppSidebar({ theme, onToggleTheme, userEmail, userRole, onLogout }: AppSidebarProps) {
   const ThemeIcon = theme === "dark" ? Sun : Moon;
   const themeLabel = theme === "dark" ? "Light mode" : "Dark mode";
 
@@ -89,12 +92,14 @@ export function AppSidebar({ theme, onToggleTheme }: AppSidebarProps) {
           </Tooltip>
 
           <SidebarItem to="/settings" icon={Settings} label="Settings" exact={false} />
+          {userRole === "admin" && <SidebarItem to="/organization" icon={Users} label="Organization" exact={false} />}
+          <button onClick={onLogout} aria-label={`Sign out ${userEmail}`} title="Sign out" className="w-9 h-9 rounded-[6px] flex items-center justify-center text-aria-text4 hover:text-aria-text2 hover:bg-[rgba(255,255,255,0.03)]"><LogOut size={14} /></button>
         </aside>
       </TooltipProvider>
 
       {/* Mobile bottom tab bar */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 h-14 material-chrome border-t border-[var(--aria-border-subtle)] flex items-center justify-around px-1">
-        {ALL_NAV.map(({ to, icon: Icon, label, exact }) => (
+        {[...ALL_NAV, ...(userRole === "admin" ? [{ to: "/organization", icon: Users, label: "Organization", exact: false }] : [])].map(({ to, icon: Icon, label, exact }) => (
           <NavLink
             key={to}
             to={to}
@@ -119,6 +124,7 @@ export function AppSidebar({ theme, onToggleTheme }: AppSidebarProps) {
           <ThemeIcon size={17} strokeWidth={1.75} />
           <span className="text-[9px] font-medium">Theme</span>
         </button>
+        <button onClick={onLogout} aria-label="Sign out" className="flex flex-col items-center gap-0.5 px-3 py-1 rounded-lg text-aria-text4 hover:text-aria-text2 transition-colors"><LogOut size={17} strokeWidth={1.75} /><span className="text-[9px] font-medium">Sign out</span></button>
       </nav>
     </>
   );

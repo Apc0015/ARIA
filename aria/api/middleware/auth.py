@@ -22,7 +22,7 @@ logger = logging.getLogger("aria")
 
 # Paths exempt from auth (health check, static assets, CORS preflight)
 _PUBLIC_PREFIXES = ("/assets", "/favicon")
-_PUBLIC_EXACT = {"/api/health", "/", ""}
+_PUBLIC_EXACT = {"/api/health", "/api/health/ready", "/api/auth/login", "/", ""}
 
 _TRUTHY = ("true", "1", "yes")
 
@@ -86,6 +86,20 @@ class ApiKeyMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         if any(path.startswith(p) for p in _PUBLIC_PREFIXES):
             return await call_next(request)
+
+        tenant_store = getattr(request.app.state, "tenant_store", None)
+        session_token = request.cookies.get("aria_session")
+        if tenant_store and session_token:
+            user = tenant_store.get_session_user(session_token)
+            if user:
+                request.state.user = user
+                return await call_next(request)
+
+        # Managed SaaS customer traffic must use an authenticated server-side
+        # session. The legacy shared API key is reserved for non-SaaS/internal
+        # deployments and cannot become a cross-tenant customer credential.
+        if tenant_store and os.getenv("ARIA_SAAS_MODE", "true").lower() in _TRUTHY:
+            return JSONResponse({"detail": "Authentication required."}, status_code=401)
 
         if not self._require_key:
             return await call_next(request)

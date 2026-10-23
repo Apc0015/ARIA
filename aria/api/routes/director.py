@@ -13,24 +13,38 @@ import logging
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+
+from aria.api.authorization import require_role
 
 logger = logging.getLogger("aria")
 
 router = APIRouter()
 
-# In-memory session store (process lifetime; good enough for this use-case)
+# In-memory session store. A durable queue/store is required before running this
+# optional guided flow across multiple API instances.
 _sessions: dict[str, "_Session"] = {}
 
 
 class _Session:
     """Holds an active Research Director conversation."""
 
-    def __init__(self, topic: str, session_id: str) -> None:
+    def __init__(
+        self,
+        topic: str,
+        session_id: str,
+        tenant_id: str,
+        user_id: str,
+        llm_overrides: dict[str, str] | None = None,
+    ) -> None:
         self.session_id = session_id
         self.topic = topic
+        self.tenant_id = tenant_id
+        self.user_id = user_id
+        self.llm_overrides = llm_overrides or {}
         self.done = False
         self.brief: dict[str, Any] | None = None
+        self.error: str | None = None
         self._gen: Any = None                   # AsyncGenerator
         self._pending_question: dict | None = None
         self._answer_queue: asyncio.Queue[str] = asyncio.Queue(maxsize=1)
@@ -44,7 +58,7 @@ class _Session:
         """Run the full conversation, parking at each question."""
         try:
             from aria.engine.intelligence.research_director import ResearchDirector
-            director = ResearchDirector()
+            director = ResearchDirector(llm_overrides=self.llm_overrides)
             gen = director.run_conversation(self.topic)
             event = await gen.asend(None)
 
@@ -73,6 +87,7 @@ class _Session:
 
         except Exception as exc:
             logger.warning("Director session %s failed: %s", self.session_id, exc)
+            self.error = "AI model unavailable. Check the connected model and try again."
             self.done = True
             self._pending_question = None
 
@@ -95,23 +110,39 @@ class _Session:
 # ── Endpoints ──────────────────────────────────────────────────────────────────
 
 @router.post("/api/director/session")
-async def start_session(payload: dict) -> dict:
+async def start_session(payload: dict, request: Request) -> dict:
     """Start a Research Director conversation.
 
     Body: {"topic": "depression"}
     Returns: {"session_id": "...", "question": {...} | null, "done": bool}
     """
+    user = require_role(request, "admin", "member")
     topic = (payload.get("topic") or "").strip()
     if not topic:
         raise HTTPException(status_code=422, detail="topic is required")
 
+    # Guided research makes AI-generated planning claims, so it must never
+    # silently downgrade to a heuristic when this tenant has no model attached.
+    from aria.engine.ensemble.providers import resolve_cleaning_llm
+
+    overrides = request.app.state.run_manager.get_tenant_llm_overrides(user["tenant_id"])
+    provider, _, _, api_key = resolve_cleaning_llm(None, overrides=overrides)
+    if not provider or (provider != "ollama" and not api_key):
+        raise HTTPException(
+            status_code=422,
+            detail="No LLM connected. Connect an AI model in Settings, then run again.",
+        )
+
     session_id = uuid4().hex[:12]
-    session = _Session(topic, session_id)
+    session = _Session(topic, session_id, user["tenant_id"], user["id"], overrides)
     _sessions[session_id] = session
     session.start()
 
-    # Wait for first question (or immediate done if topic is unambiguous + no LLM)
+    # Wait for the first question or a completed AI-generated brief.
     question = await session.wait_for_question(timeout=30.0)
+    if session.error:
+        _sessions.pop(session_id, None)
+        raise HTTPException(status_code=503, detail=session.error)
 
     return {
         "session_id": session_id,
@@ -122,16 +153,19 @@ async def start_session(payload: dict) -> dict:
 
 
 @router.post("/api/director/{session_id}/answer")
-async def submit_answer(session_id: str, payload: dict) -> dict:
+async def submit_answer(session_id: str, payload: dict, request: Request) -> dict:
     """Submit an answer for the current question.
 
     Body: {"answer": "mental health"} or {"answer": "skip"}
     Returns: {"done": bool, "question": {...} | null, "brief": {...} | null}
     """
     session = _sessions.get(session_id)
-    if session is None:
+    user = require_role(request, "admin", "member")
+    if session is None or session.tenant_id != user["tenant_id"] or session.user_id != user["id"]:
         raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
     if session.done:
+        if session.error:
+            raise HTTPException(status_code=503, detail=session.error)
         return {"done": True, "question": None, "brief": session.brief}
 
     answer = str(payload.get("answer") or "skip").strip()
@@ -139,6 +173,9 @@ async def submit_answer(session_id: str, payload: dict) -> dict:
 
     # Wait for next question or done
     question = await session.wait_for_question(timeout=30.0)
+    if session.error:
+        _sessions.pop(session_id, None)
+        raise HTTPException(status_code=503, detail=session.error)
 
     return {
         "done": session.done,
@@ -148,11 +185,14 @@ async def submit_answer(session_id: str, payload: dict) -> dict:
 
 
 @router.get("/api/director/{session_id}")
-async def get_session(session_id: str) -> dict:
+async def get_session(session_id: str, request: Request) -> dict:
     """Get current session state."""
     session = _sessions.get(session_id)
-    if session is None:
+    user = require_role(request, "admin", "member")
+    if session is None or session.tenant_id != user["tenant_id"] or session.user_id != user["id"]:
         raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
+    if session.error:
+        raise HTTPException(status_code=503, detail=session.error)
     return {
         "session_id": session_id,
         "done": session.done,
@@ -162,9 +202,13 @@ async def get_session(session_id: str) -> dict:
 
 
 @router.delete("/api/director/{session_id}")
-async def close_session(session_id: str) -> dict:
+async def close_session(session_id: str, request: Request) -> dict:
     """Close and clean up a session."""
-    session = _sessions.pop(session_id, None)
+    user = require_role(request, "admin", "member")
+    session = _sessions.get(session_id)
+    if session is None or session.tenant_id != user["tenant_id"] or session.user_id != user["id"]:
+        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
+    _sessions.pop(session_id)
     if session and session._task and not session._task.done():
         session._task.cancel()
     return {"closed": True}

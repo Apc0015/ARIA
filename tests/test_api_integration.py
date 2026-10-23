@@ -6,6 +6,7 @@ Uses FastAPI TestClient — no live server needed.
 """
 from __future__ import annotations
 
+import os
 import pytest
 
 # Try importing the app — skip if engine not available
@@ -16,12 +17,6 @@ try:
 except ImportError:
     HAS_CLIENT = False
     USE_REAL_BACKEND = False
-
-# Import the generated key so tests can authenticate
-try:
-    from aria.api.middleware.auth import _API_KEY as _TEST_KEY
-except ImportError:
-    _TEST_KEY = ""
 
 skip_no_client = pytest.mark.skipif(not HAS_CLIENT, reason="fastapi TestClient not available")
 
@@ -51,7 +46,7 @@ class TestSPAFallback:
 
     def test_unknown_api_path_stays_json_404(self, client):
         r = client.get("/api/definitely-not-a-route")
-        assert r.status_code == 404
+        assert r.status_code in (401, 404)
         assert "application/json" in r.headers["content-type"]
 skip_demo_mode = pytest.mark.skipif(not USE_REAL_BACKEND, reason="aria.engine not installed (demo mode)")
 
@@ -61,8 +56,16 @@ def client():
     if not HAS_CLIENT:
         pytest.skip("TestClient unavailable")
     with TestClient(app, raise_server_exceptions=False) as c:
-        # Inject API key into all requests via headers
-        c.headers.update({"X-API-Key": _TEST_KEY})
+        os.environ["ARIA_COOKIE_SECURE"] = "false"
+        os.environ["ARIA_CREDENTIALS_KEY"] = "q7uF5aD5yR0I4aV9P4KvvXPAcsn4GFZ4Vzuow9VSi9A="
+        app.state.tenant_store.create_tenant_admin(
+            "Integration Test Tenant", "integration@example.com", "correct-horse-battery-staple"
+        )
+        login = c.post(
+            "/api/auth/login",
+            json={"email": "integration@example.com", "password": "correct-horse-battery-staple"},
+        )
+        assert login.status_code == 200
         yield c
 
 
@@ -78,6 +81,33 @@ class TestHealth:
         r = client.get("/api/health")
         body = r.json()
         assert "status" in body
+
+    def test_untrusted_host_is_rejected_before_api_handling(self, client):
+        response = client.get("/api/health", headers={"Host": "evil.example"})
+        assert response.status_code == 400
+
+    def test_readiness_reports_required_saas_checks(self, client):
+        r = client.get("/api/health/ready")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["status"] == "ready"
+        assert all(body["checks"].values())
+
+    def test_readiness_fails_without_credential_encryption_key(self, client, monkeypatch):
+        monkeypatch.delenv("ARIA_CREDENTIALS_KEY", raising=False)
+        r = client.get("/api/health/ready")
+        assert r.status_code == 503
+        assert r.json()["checks"]["credential_encryption"] is False
+
+
+@skip_no_client
+class TestLLMProviderCatalog:
+    def test_catalog_only_lists_runnable_cleaning_providers(self, client):
+        from aria.engine.ensemble.providers import STATIC_MODEL_CATALOG
+
+        assert set(STATIC_MODEL_CATALOG) == {"anthropic", "openai", "openrouter", "ollama"}
+        assert client.get("/api/llm/models/gemini").status_code == 404
+        assert client.get("/api/llm/models/cohere").status_code == 404
 
 
 # ── CORS ───────────────────────────────────────────────────────────────────────
@@ -127,6 +157,18 @@ class TestRuns:
         r = client.post("/api/runs", json={})
         assert r.status_code in (400, 422)
 
+    def test_run_rejects_arbitrary_transient_environment_field(self, client):
+        r = client.post(
+            "/api/runs",
+            json={
+                "mission_yaml": "collection:\n  topic: safe test\n  sources:\n    enabled: [web]\n",
+                "flags": {"collect_only": True},
+                "credentials": {"PATH": "/tmp/untrusted"},
+            },
+        )
+        assert r.status_code == 422
+        assert "Unsupported credential field" in r.json()["detail"]
+
 
 # ── Download security ──────────────────────────────────────────────────────────
 
@@ -155,16 +197,32 @@ class TestDownloadSecurity:
         assert r.status_code != 400, "Valid filename 'report.json' should not be rejected with 400"
 
 
+
 # ── Credentials ────────────────────────────────────────────────────────────────
 
 @skip_no_client
 @skip_demo_mode
 class TestCredentials:
     def test_save_credentials_does_not_leak_path(self, client):
-        r = client.post("/api/credentials", json={"test_key": "test_value"})
+        r = client.post("/api/credentials", json={"OPENAI_API_KEY": "test_value"})
         assert r.status_code in (200, 201)
         body = r.json()
         assert "path" not in body, (
             f"credentials endpoint leaks filesystem path: {body}"
         )
         assert body.get("status") == "saved"
+
+    def test_saving_one_setting_preserves_existing_credentials(self, client):
+        first = "first-preserved-credential"
+        second = "second-new-credential"
+        assert client.post("/api/credentials", json={"ANTHROPIC_API_KEY": first}).status_code == 200
+        assert client.post("/api/credentials", json={"OPENROUTER_API_KEY": second}).status_code == 200
+
+        saved = client.get("/api/credentials").json()["platforms"]
+        assert saved["ANTHROPIC_API_KEY"].startswith(first[:4])
+        assert saved["OPENROUTER_API_KEY"].startswith(second[:4])
+
+    def test_saas_rejects_arbitrary_process_environment_fields(self, client):
+        r = client.post("/api/credentials", json={"PATH": "/tmp/untrusted"})
+        assert r.status_code == 422
+        assert "Unsupported credential field" in r.json()["detail"]

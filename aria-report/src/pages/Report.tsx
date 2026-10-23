@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Download, Play, FileText, FileJson, Table } from "lucide-react";
+import { Download, Play, FileArchive, FileCode2, FileText, FileJson, Table } from "lucide-react";
 import { PageTopbar } from "@/components/layout/PageTopbar";
 import { GlassCard } from "@/components/glass/GlassCard";
 import { Button } from "@/components/ui/button";
@@ -20,8 +21,48 @@ export default function Report() {
 
   const docs = docsData?.documents ?? [];
   const totalDocs = docsData?.total ?? 0;
+  const [evidenceIndex, setEvidenceIndex] = useState<number | null>(null);
+  const [evidence, setEvidence] = useState<Awaited<ReturnType<typeof api.runs.evidence>> | null>(null);
+  const [evidenceError, setEvidenceError] = useState("");
+  const [intelligence, setIntelligence] = useState<Awaited<ReturnType<typeof api.runs.intelligence>> | null>(null);
+  const [findingStatement, setFindingStatement] = useState("");
+  const [findings, setFindings] = useState<Awaited<ReturnType<typeof api.runs.findings>>["findings"]>([]);
+  const availableExports = new Set(run?.available_exports ?? []);
 
-  async function download(kind: "markdown" | "json" | "csv" | "raw") {
+  async function reviewEvidence(index: number) {
+    if (!runId) return;
+    setEvidenceIndex(index);
+    setEvidenceError("");
+    try {
+      setEvidence(await api.runs.evidence(runId, index));
+    } catch (error) {
+      setEvidence(null);
+      setEvidenceError(error instanceof Error ? error.message : "Evidence could not be loaded");
+    }
+  }
+
+  async function loadIntelligence() {
+    if (!runId) return;
+    try {
+      setIntelligence(await api.runs.intelligence(runId));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Intelligence results could not be loaded");
+    }
+  }
+
+  async function approveFinding() {
+    if (!runId || !findingStatement.trim()) return;
+    try {
+      const result = await api.runs.approveFinding(runId, findingStatement, evidenceIndex === null ? [] : [evidenceIndex]);
+      setFindings((current) => [...current, result.finding]);
+      setFindingStatement("");
+      toast.success("Finding approved and linked to this research run.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Finding could not be approved");
+    }
+  }
+
+  async function download(kind: "markdown" | "html" | "zip" | "json" | "csv" | "raw" | "findings") {
     if (!runId) return;
     try {
       const { blob, filename } = await api.exports.download(runId, kind);
@@ -146,11 +187,14 @@ export default function Report() {
             {/* Export buttons */}
             <div className="flex flex-wrap gap-2">
               {[
-                { label: "Markdown", icon: FileText, kind: "markdown" as const },
-                { label: "JSON", icon: FileJson, kind: "json" as const },
-                { label: "CSV", icon: Table, kind: "csv" as const },
-                { label: "Raw", icon: Download, kind: "raw" as const },
-              ].map(({ label, icon: Icon, kind }) => (
+                { label: "Markdown", icon: FileText, kind: "markdown" as const, exportKey: "markdown" },
+                { label: "HTML", icon: FileCode2, kind: "html" as const, exportKey: "html" },
+                { label: "Full package", icon: FileArchive, kind: "zip" as const, exportKey: "zip" },
+                { label: "JSON", icon: FileJson, kind: "json" as const, exportKey: "clean_json" },
+                { label: "CSV", icon: Table, kind: "csv" as const, exportKey: "clean_csv" },
+                { label: "Raw", icon: Download, kind: "raw" as const, exportKey: "raw_json" },
+                { label: "Findings", icon: FileText, kind: "findings" as const, exportKey: "approved_findings" },
+              ].filter(({ exportKey }) => availableExports.has(exportKey)).map(({ label, icon: Icon, kind }) => (
                 <Button
                   key={label}
                   size="sm"
@@ -161,6 +205,7 @@ export default function Report() {
                   <Icon size={11} className="mr-1.5" /> {label}
                 </Button>
               ))}
+              <Button size="sm" variant="subtle" className="text-[12px] h-8 px-3 font-medium" onClick={loadIntelligence}>Intelligence</Button>
             </div>
           </GlassCard>
 
@@ -186,11 +231,9 @@ export default function Report() {
                       {docs.map((doc, i) => (
                         <tr key={doc.id ?? doc.url ?? i} className="border-b border-[var(--aria-border-subtle)] hover:bg-[var(--aria-surface)]/40">
                           <td className="p-3 text-aria-text2 max-w-xs truncate">
-                            {doc.url ? (
-                              <a href={doc.url} target="_blank" rel="noreferrer" className="hover:text-aria-accent">
-                                {doc.title}
-                              </a>
-                            ) : doc.title}
+                            <button type="button" onClick={() => reviewEvidence(i)} className="hover:text-aria-accent text-left truncate max-w-full">
+                              {doc.title}
+                            </button>
                           </td>
                           <td className="p-3">
                             <span className="text-[10px] font-medium text-aria-accent bg-aria-accent/[0.08] border border-aria-accent/20 px-1.5 py-0.5 rounded">
@@ -208,6 +251,41 @@ export default function Report() {
               </GlassCard>
             </div>
           )}
+
+          {evidenceIndex !== null && (
+            <GlassCard className="p-5 space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-medium text-aria-text3">Evidence review</p>
+                  <p className="text-[13px] font-semibold text-aria-text1">{evidence?.clean_document.title ?? "Loading source..."}</p>
+                </div>
+                <Button size="sm" variant="subtle" onClick={() => { setEvidenceIndex(null); setEvidence(null); }}>Close</Button>
+              </div>
+              {evidenceError ? <p className="text-[12px] text-red-400">{evidenceError}</p> : evidence && <>
+                <div className="grid gap-3 sm:grid-cols-2 text-[12px]">
+                  <div><p className="text-aria-text4">AI summary</p><p className="text-aria-text2">{evidence.clean_document.summary || "No summary was produced."}</p></div>
+                  <div><p className="text-aria-text4">Score and rationale</p><p className="text-aria-text2">{evidence.clean_document.relevance_score != null ? `${Math.round(evidence.clean_document.relevance_score * 100)}% relevance` : "No relevance score."}</p><p className="text-aria-text4 mt-1">{evidence.scoring_rationale || "No scoring rationale was produced."}</p></div>
+                </div>
+                <div><p className="text-[11px] font-medium text-aria-text3 mb-1">Extracted claims</p><pre className="whitespace-pre-wrap text-[12px] text-aria-text2">{evidence.claims.length ? evidence.claims.map(String).join("\n") : "No claims were extracted."}</pre></div>
+                <div><p className="text-[11px] font-medium text-aria-text3 mb-1">Captured source text</p><pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded bg-[var(--aria-surface)] p-3 text-[11px] text-aria-text2">{evidence.raw_text || "The collector did not retain readable text for this document."}</pre></div>
+                <div className="text-[11px] text-aria-text4">Source: {evidence.source_metadata.source || "unknown"}{evidence.source_metadata.author ? ` | ${evidence.source_metadata.author}` : ""}{evidence.source_metadata.url && <> | <a className="text-aria-accent" href={evidence.source_metadata.url} target="_blank" rel="noreferrer">Open original</a></>}</div>
+              </>}
+            </GlassCard>
+          )}
+
+          <GlassCard className="p-5 space-y-3">
+            <div><p className="text-[11px] font-medium text-aria-text3">Approved findings</p><p className="text-[12px] text-aria-text4">Record a conclusion only after reviewing the supporting evidence.</p></div>
+            <textarea value={findingStatement} onChange={(event) => setFindingStatement(event.target.value)} placeholder="Write the decision-ready finding..." className="min-h-20 w-full rounded border border-[var(--aria-border)] bg-[var(--aria-surface)] p-3 text-[12px] text-aria-text1" />
+            <Button size="sm" variant="primary" onClick={approveFinding} disabled={!findingStatement.trim()}>Approve finding{evidenceIndex !== null ? " with selected evidence" : ""}</Button>
+            {findings.length > 0 && <div className="space-y-2">{findings.map((finding) => <div key={finding.id} className="rounded border border-[var(--aria-border)] p-3 text-[12px]"><p className="text-aria-text2">{finding.statement}</p><p className="mt-1 text-[10px] text-aria-text4">Approved by {finding.approved_by} | {finding.evidence_document_indexes.length} evidence link(s)</p></div>)}</div>}
+          </GlassCard>
+
+          {intelligence && <GlassCard className="p-5 space-y-3">
+            <p className="text-[11px] font-medium text-aria-text3">Research intelligence</p>
+            <p className="text-[12px] text-aria-text2">Entities: {Array.isArray(intelligence.knowledge_graph.entities) ? intelligence.knowledge_graph.entities.length : 0} | Contradictions: {intelligence.contradictions.length} | Extracted images: {intelligence.images.length}</p>
+            <div><p className="text-[11px] text-aria-text4">Research gaps</p><pre className="max-h-48 overflow-auto whitespace-pre-wrap text-[11px] text-aria-text2">{intelligence.gap_analysis.gaps?.length ? intelligence.gap_analysis.gaps.map(String).join("\n") : "No gaps were generated."}</pre></div>
+            <div><p className="text-[11px] text-aria-text4">Follow-up queries</p><pre className="max-h-48 overflow-auto whitespace-pre-wrap text-[11px] text-aria-text2">{intelligence.gap_analysis.follow_up_queries?.length ? intelligence.gap_analysis.follow_up_queries.join("\n") : "No follow-up queries were generated."}</pre></div>
+          </GlassCard>}
         </div>
       </div>
     </div>
