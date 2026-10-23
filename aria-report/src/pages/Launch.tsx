@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
-import { Play, ChevronDown, ChevronUp, ArrowRight, SkipForward, CheckCircle2 } from "lucide-react";
+import { Play, ChevronDown, ChevronUp, ArrowRight, SkipForward, CheckCircle2, BookOpen, X } from "lucide-react";
 import { PageTopbar } from "@/components/layout/PageTopbar";
 import { GlassCard } from "@/components/glass/GlassCard";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import { SOURCES, SOURCE_CATEGORIES, sourcesByCategory, advancedSources } from "
 import { useEnabledSources } from "@/hooks/useEnabledSources";
 import { toast } from "sonner";
 import type { SourceCategory } from "@/lib/sources";
+import type { SeedPreview } from "@/types";
 
 const DEPTH_LABELS: Record<number, { label: string; docs: string }> = {
   1: { label: "Quick", docs: "~50 docs" },
@@ -129,6 +130,11 @@ export default function Launch() {
   const { isEnabled, toggle } = useEnabledSources();
   const sourceEnabled = (id: string) => isEnabled(id, ["web", "arxiv", "hackernews"].includes(id));
 
+  // Seed paper (optional citation crawl)
+  const [seedInput, setSeedInput] = useState("");
+  const [seedPreview, setSeedPreview] = useState<SeedPreview | null>(null);
+  const [seedResolving, setSeedResolving] = useState(false);
+
   // ── Mutations ─────────────────────────────────────────────────────────────
 
   const launch = useMutation({
@@ -153,6 +159,11 @@ export default function Launch() {
         });
       }
 
+      const seed = seedInput.trim();
+      const seedPayload = seed
+        ? /^https?:\/\//i.test(seed) ? { seed_url: seed } : { seed_doi: seed }
+        : {};
+
       return api.runs.start({
         topic: resolvedTopic,
         depth_level: depth as 1 | 2 | 3 | 4 | 5,
@@ -160,6 +171,7 @@ export default function Launch() {
         auth_sources,
         launch_mode: launchMode,
         ...(launchMode === "guided" && sessionId ? { director_session_id: sessionId } : {}),
+        ...seedPayload,
       });
     },
     onSuccess: (run) => {
@@ -234,6 +246,26 @@ export default function Launch() {
     } finally {
       setDirectorLoading(false);
     }
+  }
+
+  async function handleSeedResolve() {
+    const seed = seedInput.trim();
+    if (!seed) return;
+    setSeedResolving(true);
+    setSeedPreview(null);
+    try {
+      setSeedPreview(await api.seed.resolve(seed));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg.replace(/^\d+:\s*/, "") || "Could not look up that paper.");
+    } finally {
+      setSeedResolving(false);
+    }
+  }
+
+  function clearSeed() {
+    setSeedInput("");
+    setSeedPreview(null);
   }
 
   function toggleSource(id: string) {
@@ -605,6 +637,81 @@ export default function Launch() {
                 )}
               </div>
             </GlassCard>
+
+            {/* Seed paper — optional citation crawl */}
+            {launchMode !== "yaml" && !hasMissionYaml && (
+              <GlassCard className="p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-[11px] font-medium text-aria-text3 flex items-center gap-1.5">
+                    <BookOpen size={12} />
+                    Seed Paper <span className="text-aria-text4 font-normal">(optional)</span>
+                  </Label>
+                  {seedInput && (
+                    <button
+                      type="button"
+                      onClick={clearSeed}
+                      aria-label="Clear seed paper"
+                      className="text-aria-text4 hover:text-aria-text2 transition-colors"
+                    >
+                      <X size={13} />
+                    </button>
+                  )}
+                </div>
+                <p className="text-[12px] text-aria-text4">
+                  Start from a paper's DOI or URL and ARIA will also collect the works it cites.
+                </p>
+                <div className="flex gap-2">
+                  <Input
+                    value={seedInput}
+                    onChange={(e) => {
+                      setSeedInput(e.target.value);
+                      setSeedPreview(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && seedInput.trim()) {
+                        e.preventDefault();
+                        handleSeedResolve();
+                      }
+                    }}
+                    placeholder="10.5787/52-3-1483 or https://…"
+                    disabled={seedResolving}
+                    className="bg-transparent border-white/[0.06] text-aria-text1 placeholder:text-aria-text4 focus-visible:ring-aria-accent text-[13px]"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSeedResolve}
+                    disabled={!seedInput.trim() || seedResolving}
+                    className="border-white/[0.06] text-aria-text2 hover:border-aria-accent/40"
+                  >
+                    {seedResolving ? "Looking up…" : "Look up"}
+                  </Button>
+                </div>
+                {seedPreview && (
+                  <div className="rounded-lg border border-aria-accent/20 bg-aria-accent/[0.06] p-3 space-y-1">
+                    <p className="text-[13px] font-medium text-aria-text1">
+                      {seedPreview.title || "Title not found — the crawl will still try this seed"}
+                    </p>
+                    {seedPreview.authors.length > 0 && (
+                      <p className="text-[12px] text-aria-text3">
+                        {seedPreview.authors.slice(0, 3).join(", ")}
+                        {seedPreview.authors.length > 3 ? ` +${seedPreview.authors.length - 3} more` : ""}
+                        {seedPreview.year ? ` · ${seedPreview.year}` : ""}
+                      </p>
+                    )}
+                    {seedPreview.journal && (
+                      <p className="text-[11px] italic text-aria-text4">{seedPreview.journal}</p>
+                    )}
+                    {seedPreview.ref_count != null && (
+                      <p className="text-[12px] text-aria-accent flex items-center gap-1">
+                        <CheckCircle2 size={12} />
+                        {seedPreview.ref_count} references found — they'll be crawled during the run
+                      </p>
+                    )}
+                  </div>
+                )}
+              </GlassCard>
+            )}
 
             {/* Depth config */}
             <GlassCard className="p-4 space-y-3">

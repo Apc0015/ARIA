@@ -36,6 +36,7 @@ import type {
   RunsListResponse,
   RunDocumentsResponse,
   StartRunPayload,
+  SeedPreview,
   CredentialsResponse,
   Document,
 } from "@/types";
@@ -61,6 +62,9 @@ export const api = {
       request<IntelligenceResponse>(`/api/runs/${runId}/intelligence`),
     findings: (runId: string) => request<{ run_id: string; findings: Finding[] }>(`/api/runs/${runId}/findings`),
     approveFinding: (runId: string, statement: string, evidenceDocumentIndexes: number[], notes = "") => request<{ run_id: string; finding: Finding }>(`/api/runs/${runId}/findings`, { method: "POST", body: JSON.stringify({ statement, evidence_document_indexes: evidenceDocumentIndexes, notes }) }),
+  },
+  seed: {
+    resolve: (q: string) => request<SeedPreview>(`/api/seed/resolve?q=${encodeURIComponent(q)}`),
   },
   exports: {
     markdown: (runId: string) => `${BASE}/api/runs/${runId}/export/markdown`,

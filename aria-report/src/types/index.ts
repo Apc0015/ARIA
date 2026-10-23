@@ -52,6 +52,18 @@ export interface RunDocumentsResponse {
   total: number;
 }
 
+export interface SeedPreview {
+  title: string;
+  authors: string[];
+  year: string;
+  journal: string;
+  doi: string;
+  url: string;
+  abstract: string;
+  ref_count: number | null;
+  access_status: string;
+}
+
 export interface StartRunPayload {
   topic?: string;
   intent?: string;
@@ -65,6 +77,8 @@ export interface StartRunPayload {
   mission_yaml?: string;
   launch_mode?: "guided" | "manual" | "yaml";
   director_session_id?: string;
+  seed_doi?: string;
+  seed_url?: string;
   ensemble_models?: string[];
   flags?: Record<string, unknown>;
 }

@@ -67,6 +67,20 @@ def _ui_payload_to_mission_yaml(payload: dict) -> str:
         },
         "output": {"formats": ["json", "csv", "markdown", "html", "zip"]},
     }
+    seed = (payload.get("seed_doi") or payload.get("seed_url") or "").strip()
+    if seed:
+        from aria.api.routes.seed import parse_seed_input
+
+        seed_doi, seed_url = parse_seed_input(seed)
+        mission_dict["citation_crawl"] = {
+            "enabled": True,
+            "seed_doi": seed_doi,
+            "seed_url": seed_url,
+            "levels": 1,
+            "resolve_abstracts": True,
+            "fetch_open_access": True,
+            "max_refs": max(1, min(int(payload.get("max_refs", 100)), 500)),
+        }
     return yaml.dump(mission_dict, allow_unicode=True)
 
 
@@ -105,8 +119,12 @@ async def start_run(payload: dict, request: Request, run_manager: RunManager = D
 
     # Convert UI payload to mission_yaml if needed
     if "mission_yaml" not in payload and "topic" in payload:
+        try:
+            mission_yaml = _ui_payload_to_mission_yaml(payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
         payload = {
-            "mission_yaml": _ui_payload_to_mission_yaml(payload),
+            "mission_yaml": mission_yaml,
             # Preserve fields the orchestrator/run_manager reads from payload
             "flags": payload.get("flags", {}),
             "credentials": payload.get("credentials"),
